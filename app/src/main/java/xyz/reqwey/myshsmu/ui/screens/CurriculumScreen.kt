@@ -86,7 +86,7 @@ fun CurriculumScreen(
 	Column(
 		modifier = Modifier
 			.fillMaxSize()
-			.padding(8.dp)
+			.padding(horizontal = 8.dp)
 	) {
 		Text(
 			text = weekLabel,

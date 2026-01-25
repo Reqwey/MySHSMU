@@ -1,10 +1,30 @@
 package xyz.reqwey.myshsmu.ui.screens
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -21,7 +41,7 @@ fun ScoreScreen(
 	Column(
 		modifier = Modifier
 			.fillMaxSize()
-			.padding(16.dp)
+			.padding(horizontal = 16.dp)
 	) {
 		// Dropdowns Row
 		Row(
@@ -41,7 +61,7 @@ fun ScoreScreen(
 					readOnly = true,
 					label = { Text("学年") },
 					trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = yearExpanded) },
-					modifier = Modifier.menuAnchor()
+					modifier = Modifier.menuAnchor(type = MenuAnchorType.PrimaryEditable, enabled = true)
 				)
 				ExposedDropdownMenu(
 					expanded = yearExpanded,
@@ -98,7 +118,7 @@ fun ScoreScreen(
 		uiState.gpaInfo?.let {
 			Text(
 				text = it,
-				style = MaterialTheme.typography.bodyMedium,
+				style = MaterialTheme.typography.bodySmall,
 				fontWeight = FontWeight.Bold,
 				modifier = Modifier.padding(bottom = 8.dp)
 			)
@@ -109,17 +129,51 @@ fun ScoreScreen(
 			modifier = Modifier
 				.fillMaxWidth()
 				.padding(vertical = 8.dp),
-			horizontalArrangement = Arrangement.SpaceBetween
+			horizontalArrangement = Arrangement.SpaceBetween,
 		) {
-			Text("课程", modifier = Modifier.weight(3f), fontWeight = FontWeight.Bold)
-			Text("学分", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
-			Text("分数", modifier = Modifier.weight(1.5f), fontWeight = FontWeight.Bold)
-			Text("评级", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+			Column(
+				modifier = Modifier.weight(3f),
+			) {
+				Text(
+					"课程", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+					style = MaterialTheme.typography.bodySmall
+				)
+			}
+			Column(
+				modifier = Modifier.weight(1f),
+				horizontalAlignment = Alignment.CenterHorizontally
+			) {
+				Text(
+					"学分", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+					style = MaterialTheme.typography.bodySmall
+				)
+			}
+			Column(
+				modifier = Modifier.weight(1.5f),
+				horizontalAlignment = Alignment.CenterHorizontally
+			) {
+				Text(
+					"分数", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+					style = MaterialTheme.typography.bodySmall
+				)
+			}
+			Column(
+				modifier = Modifier.weight(1f),
+				horizontalAlignment = Alignment.CenterHorizontally
+			) {
+				Text(
+					"评级", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+					style = MaterialTheme.typography.bodySmall
+				)
+			}
 		}
 		HorizontalDivider()
 
 		// Score List
-		LazyColumn(modifier = Modifier.fillMaxSize()) {
+		LazyColumn(
+			modifier = Modifier.fillMaxSize(),
+			horizontalAlignment = Alignment.CenterHorizontally
+		) {
 			items(uiState.scoreList) { score ->
 				ScoreRow(score)
 				HorizontalDivider(modifier = Modifier.padding(horizontal = 4.dp), thickness = 0.5.dp)
@@ -133,28 +187,34 @@ fun ScoreRow(score: ScoreItem) {
 	Row(
 		modifier = Modifier
 			.fillMaxWidth()
-			.padding(vertical = 12.dp),
+			.padding(vertical = 16.dp),
 		horizontalArrangement = Arrangement.SpaceBetween
 	) {
-		Column(modifier = Modifier.weight(3f)) {
-			Text(score.courseName, style = MaterialTheme.typography.bodyMedium)
-			if (score.examSituation != "正常") {
-				Text(
-					text = score.examSituation,
-					style = MaterialTheme.typography.labelSmall,
-					color = MaterialTheme.colorScheme.error
-				)
-			}
+		Column(
+			modifier = Modifier.weight(3f),
+		) {
+			Text(score.courseName, style = MaterialTheme.typography.bodyLarge)
 		}
-		Text(
-			text = score.credit.toString(),
+
+		Column(
 			modifier = Modifier.weight(1f),
-			style = MaterialTheme.typography.bodyMedium
-		)
-		Column(modifier = Modifier.weight(1.5f)) {
+			horizontalAlignment = Alignment.CenterHorizontally
+		) {
 			Text(
-				text = score.score.toString(),
-				style = MaterialTheme.typography.bodyMedium,
+				score.credit.toString(),
+				style = MaterialTheme.typography.bodyLarge,
+				fontWeight = FontWeight.SemiBold,
+			)
+		}
+
+		Column(
+			modifier = Modifier.weight(1.5f),
+			horizontalAlignment = Alignment.CenterHorizontally
+		) {
+			Text(
+				text = if (score.examSituation != "正常") score.examSituation else score.score.toString(),
+				style = MaterialTheme.typography.bodyLarge,
+				fontWeight = FontWeight.SemiBold,
 				color = if (score.score < 60) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
 			)
 			if (score.fScore > 0) {
@@ -165,10 +225,15 @@ fun ScoreRow(score: ScoreItem) {
 				)
 			}
 		}
-		Text(
-			text = score.achievementGrade,
+		Column(
 			modifier = Modifier.weight(1f),
-			style = MaterialTheme.typography.bodyMedium
-		)
+			horizontalAlignment = Alignment.CenterHorizontally
+		) {
+			Text(
+				text = score.achievementGrade,
+				style = MaterialTheme.typography.bodyLarge,
+				fontWeight = FontWeight.SemiBold,
+			)
+		}
 	}
 }
