@@ -45,7 +45,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	private val BASE_URL =
 		"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421f1e25594757e7b586d059ce29d51367b0014/cas/"
 	private val LOGIN_URL =
-		"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421fae05288327e7b586d059ce29d51367b9aac/Home"
+		"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421f1e25594757e7b586d059ce29d51367b0014/cas/login?service=https%3a%2f%2fjwstu.shsmu.edu.cn%2fLogin%2fauthLogin"
 	private val HOME_URL =
 		"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421fae05288327e7b586d059ce29d51367b9aac/"
 	private val PREF_NAME = "auth_prefs"
@@ -63,7 +63,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	init {
 		// ViewModel 初始化时配置网络
 		NetworkModule.init(application.applicationContext)
-		shsmuService = ShsmuService(NetworkModule.client, BASE_URL, LOGIN_URL, HOME_URL)
+		shsmuService = ShsmuService(
+			NetworkModule.client,
+			NetworkModule.cookieJar,
+			BASE_URL,
+			LOGIN_URL,
+			HOME_URL
+		)
 
 		loadPersistentData()
 
@@ -147,7 +153,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 					fetchScoreData()
 				} else {
 					showMessage("正在登录...")
-					if (shsmuService.autoLogin(user, pwd, pubKey)) {
+					val (isSuccessful, message) = shsmuService.autoLogin(user, pwd, pubKey)
+					if (isSuccessful) {
 						showMessage("登录成功")
 						saveCredentials(user, pwd)
 
@@ -159,7 +166,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 						onWeekPageChanged(LocalDate.now())
 						fetchScoreData()
 					} else {
-						showMessage("用户名和密码不正确")
+						showMessage(message)
 					}
 				}
 			} catch (e: Exception) {

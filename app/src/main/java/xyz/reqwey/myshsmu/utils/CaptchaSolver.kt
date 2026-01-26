@@ -75,8 +75,8 @@ object CaptchaSolver {
 		if (expression.isBlank()) return null
 
 		try {
-			// 移除末尾的 ? 或 = 或 -（"="识别错误）
-			val expr = expression.trimEnd('=', '?', '-')
+			// 删除等号及其后面的所有内容，然后移除末尾的 ? 或 -
+			val expr = expression.substringBefore('=').trimEnd('?', '-')
 
 			// 寻找运算符
 			val operators = charArrayOf('+', '-', '*', '/')

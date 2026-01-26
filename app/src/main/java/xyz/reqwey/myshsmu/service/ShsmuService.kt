@@ -10,100 +10,106 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import xyz.reqwey.myshsmu.network.PersistentCookieJar
 import xyz.reqwey.myshsmu.utils.CaptchaSolver
 import xyz.reqwey.myshsmu.utils.RsaCrypto
 
 class ShsmuService(
 	private val client: OkHttpClient,
+	private val cookieJar: PersistentCookieJar,
 	private val baseUrl: String,
 	private val loginUrl: String,
 	private val homeUrl: String
 ) {
+	suspend fun buildLoginForm(doc: Document, username: String, password: String): Pair<String, FormBody>? {
+		try {
+			// 提取表单信息
+			val form = doc.selectFirst("form") ?: error("没有找到登录表单")
+
+			// 提取 Action URL
+			val action = form.attr("abs:action")
+			val submitUrl = action.ifEmpty { loginUrl }
+
+			// 提取所有输入字段 (包含隐藏字段)
+			val inputFields = mutableMapOf<String, String>()
+			form.select("input").forEach { input ->
+				val name = input.attr("name")
+				val type = input.attr("type")
+				val value = input.attr("value")
+				if (name.isNotEmpty() && type != "submit") {
+					inputFields[name] = value
+				}
+			}
+
+			// 查找并下载验证码
+			val captchaImg = doc.selectFirst("img[src*=captcha]")
+			val captchaUrl = captchaImg?.attr("abs:src") ?: "$baseUrl/captcha.jpg?vpn-1"
+			Log.i("Login", "Downloading captcha from: $captchaUrl")
+
+			val captchaBitmap = downloadImage(captchaUrl) ?: error("下载验证图片失败")
+
+			// 识别验证码
+			val captchaResult = CaptchaSolver.solve(captchaBitmap) ?: error("验证码识别失败")
+			Log.i("Login", "Solved Captcha: $captchaResult")
+
+			// 更新 map 中的关键字段
+			inputFields["username"] = username
+			inputFields["password"] = password
+			inputFields["authcode"] = captchaResult
+
+			val formBuilder = FormBody.Builder()
+			// 7. 填入所有字段
+			inputFields.forEach { (name, value) ->
+				formBuilder.add(name, value)
+			}
+
+			return Pair(submitUrl, formBuilder.build())
+		} catch (e: Exception) {
+			Log.e("Login", e.toString())
+			return null
+		}
+	}
 	/**
 	 * 全自动登录 (挂起函数，直接在 CoroutineScope 中调用)
 	 */
-	suspend fun autoLogin(username: String, password: String, publicKeyPem: String): Boolean {
+	suspend fun autoLogin(username: String, password: String, publicKeyPem: String): Pair<Boolean, String> {
 		return withContext(Dispatchers.IO) {
 			try {
-				Log.i("Login", "Starting login process with url $loginUrl")
+				val encryptedPwd = RsaCrypto.encryptPassword(password, publicKeyPem)
+				var curLoginUrl = loginUrl
+				for (i in 1..5) {
+					cookieJar.clear()
+					Log.i("Login", "Starting login process with url $curLoginUrl")
 
-				// 1. 获取登录页面 HTML以提取额外字段和验证码位置
-				val loginPageHtml = getUrlContent(loginUrl)
-				if (loginPageHtml == null) {
-					Log.e("Login", "Failed to get login page content")
-					return@withContext false
-				}
+					// 获取登录页面 HTML以提取额外字段和验证码位置
+					val loginPageHtml = getUrlContent(curLoginUrl) ?: error("未能下载登录页面")
 
-				// 2. 解析 HTML
-				val doc = Jsoup.parse(loginPageHtml, loginUrl)
+					// 解析 HTML
+					val doc = Jsoup.parse(loginPageHtml, curLoginUrl)
+					val (submitUrl, form) = buildLoginForm(doc, username, encryptedPwd) ?: error("验证码AI处理失败，请再试一次")
 
-				// 3. 提取表单信息
-				val form = doc.selectFirst("form")
-				if (form == null) {
-					Log.e("Login", "No form found in login page")
-					return@withContext false
-				}
+					// 提交登录
+					val postReq = Request.Builder()
+						.url(submitUrl)
+						.method("POST", form)
+						.build()
 
-				// 提取 Action URL
-				val action = form.attr("abs:action")
-				val submitUrl = action.ifEmpty { loginUrl }
-
-				// 提取所有输入字段 (包含隐藏字段)
-				val inputFields = mutableMapOf<String, String>()
-				form.select("input").forEach { input ->
-					val name = input.attr("name")
-					val type = input.attr("type")
-					val value = input.attr("value")
-					if (name.isNotEmpty() && type != "submit") {
-						inputFields[name] = value
+					val loginResponse = client.newCall(postReq).execute()
+					if (loginResponse.isSuccessful) {
+						if (checkLoginSuccess(loginResponse.body.string())) {
+							return@withContext Pair(true, "")
+						}
+						curLoginUrl = submitUrl
+					} else {
+						return@withContext Pair(false, "网络连接失败")
 					}
 				}
 
-				// 4. 查找并下载验证码
-				val captchaBitmap = downloadImage("$baseUrl/captcha.jpg?vpn-1")
-				if (captchaBitmap == null) {
-					Log.e("Login", "Failed to download captcha")
-					return@withContext false
-				}
-
-				// 5. 识别验证码
-				val captchaResult = CaptchaSolver.solve(captchaBitmap)
-				if (captchaResult == null) {
-					Log.e("Login", "OCR returned null")
-					return@withContext false
-				}
-				Log.i("Login", "Solved Captcha: $captchaResult")
-
-				// 6. preparing data
-				val encryptedPwd = RsaCrypto.encryptPassword(password, publicKeyPem)
-
-				// 更新 map 中的关键字段
-				inputFields["username"] = username
-				inputFields["password"] = encryptedPwd
-				inputFields["authcode"] = captchaResult
-
-				val formBuilder = FormBody.Builder()
-				// 7. 填入所有字段
-				inputFields.forEach { (name, value) ->
-					formBuilder.add(name, value)
-				}
-
-				// 8. 提交登录
-				val postReq = Request.Builder()
-					.url(submitUrl)
-					.method("POST", formBuilder.build())
-					.build()
-
-				val success = client.newCall(postReq).execute().use { resp ->
-					Log.i("Login", "Final URL: ${resp.request.url}")
-					resp.isSuccessful && checkLoginSuccess()
-				}
-
-				return@withContext success
-
+				return@withContext Pair(false, "用户名或密码错误")
 			} catch (e: Exception) {
 				Log.e("Login", "Auto login error", e)
-				return@withContext false
+				return@withContext Pair(false, "错误：${e.message}")
 			}
 		}
 	}
@@ -113,7 +119,8 @@ class ShsmuService(
 		return try {
 			client.newCall(req).execute().use { resp ->
 				if (resp.isSuccessful) {
-					resp.body.string()
+					val content = resp.body.string()
+					content
 				} else {
 					Log.e("Login", "Get content failed: HTTP ${resp.code}")
 					null
@@ -132,8 +139,10 @@ class ShsmuService(
 	suspend fun checkSessionValid(): Boolean {
 		return withContext(Dispatchers.IO) {
 			try {
-				// 判断逻辑：请求 HomeUrl，看是否跳转回登录页，或内容包含登录成功标识
-				checkLoginSuccess()
+				val req = Request.Builder().url(loginUrl).get().build()
+				client.newCall(req).execute().use { resp ->
+					checkLoginSuccess(resp.body.string())
+				}
 			} catch (e: Exception) {
 				e.printStackTrace()
 				false
@@ -141,14 +150,8 @@ class ShsmuService(
 		}
 	}
 
-	private fun checkLoginSuccess(): Boolean {
-		// 请求主页，检查是否包含"你好"关键词
-		val req = Request.Builder().url("$homeUrl/Home").get().build()
-
-		return client.newCall(req).execute().use { resp ->
-			val body = resp.body.string()
-			!body.contains("login_box")
-		}
+	private fun checkLoginSuccess(content: String): Boolean {
+		return !content.contains("login_box")
 	}
 
 	private fun downloadImage(url: String): Bitmap? {
@@ -156,9 +159,10 @@ class ShsmuService(
 		return try {
 			client.newCall(req).execute().use { resp ->
 				if (resp.isSuccessful) {
-					resp.body.byteStream().use { stream ->
+					val bitmap = resp.body.byteStream().use { stream ->
 						BitmapFactory.decodeStream(stream)
 					}
+					bitmap
 				} else {
 					Log.e("Login", "Image download failed: HTTP ${resp.code}")
 					null

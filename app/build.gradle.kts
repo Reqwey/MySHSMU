@@ -14,7 +14,7 @@ android {
         minSdk = 31
         targetSdk = 36
         versionCode = 1
-        versionName = "1.3"
+        versionName = "1.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -40,7 +40,7 @@ android {
 dependencies {
     implementation(libs.okhttp)
     implementation(libs.jsoup)
-    implementation(libs.play.services.mlkit.text.recognition)
+    implementation(libs.text.recognition)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.androidx.core.ktx)
