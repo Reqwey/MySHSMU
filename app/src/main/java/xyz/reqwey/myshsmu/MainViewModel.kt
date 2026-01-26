@@ -45,7 +45,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	private val BASE_URL =
 		"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421f1e25594757e7b586d059ce29d51367b0014/cas/"
 	private val LOGIN_URL =
-		"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421f1e25594757e7b586d059ce29d51367b0014/cas/login?service=https%3A%2F%2Fwebvpn2.shsmu.edu.cn%2Flogin%3Fcas_login%3Dtrue"
+		"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421fae05288327e7b586d059ce29d51367b9aac/Home"
 	private val HOME_URL =
 		"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421fae05288327e7b586d059ce29d51367b9aac/"
 	private val PREF_NAME = "auth_prefs"

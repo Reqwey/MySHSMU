@@ -147,7 +147,7 @@ class ShsmuService(
 
 		return client.newCall(req).execute().use { resp ->
 			val body = resp.body.string()
-			body.contains("你好")
+			!body.contains("login_box")
 		}
 	}
 
