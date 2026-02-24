@@ -25,11 +25,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import xyz.reqwey.myshsmu.LoginUiState
+import xyz.reqwey.myshsmu.MySHSMUUiState
 import xyz.reqwey.myshsmu.MainViewModel
 
 @Composable
-fun LoginScreen(viewModel: MainViewModel, uiState: LoginUiState) {
+fun LoginScreen(viewModel: MainViewModel, uiState: MySHSMUUiState) {
 	// 本地状态：如果已保存则使用保存值，否则使用默认值
 	var username by remember(uiState.savedUsername) { mutableStateOf(uiState.savedUsername) }
 	var password by remember(uiState.savedPassword) { mutableStateOf(uiState.savedPassword) }

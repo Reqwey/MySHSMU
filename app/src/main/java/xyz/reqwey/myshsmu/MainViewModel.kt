@@ -20,7 +20,7 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 // UI 状态数据类
-data class LoginUiState(
+data class MySHSMUUiState(
 	val isLoading: Boolean = false,
 	val userMessage: String? = null,
 	val curriculumJson: String? = null,
@@ -32,13 +32,15 @@ data class LoginUiState(
 	val selectedYear: String? = null,
 	val selectedSemester: Int = 1,
 	val scoreList: List<ScoreItem> = emptyList(),
-	val gpaInfo: String? = null
+	val gpaInfo: String? = null,
+	val firstWeekStartDate: String? = null,
+	val weekCount: Int = 0
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
 	// 暴露给 Compose 观察的状态
-	private val _uiState = MutableStateFlow(LoginUiState())
+	private val _uiState = MutableStateFlow(MySHSMUUiState())
 	val uiState = _uiState.asStateFlow()
 
 	// 常量
@@ -52,6 +54,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	private val PREF_CURRICULUM_RANGE_START = "curriculum_range_start"
 	private val PREF_CURRICULUM_RANGE_END = "curriculum_range_end"
 	private val PREF_CURRICULUM_JSON = "curriculum_json"
+	private val PREF_FIRST_WEEK_START_DATE = "first_week_start_date"
+	private val PREF_WEEK_COUNT = "week_count"
 
 	private val shsmuService: ShsmuService
 	private val prefs by lazy { application.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
@@ -81,6 +85,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		val json = prefs.getString(PREF_CURRICULUM_JSON, null)
 		val startStr = prefs.getString(PREF_CURRICULUM_RANGE_START, null)
 		val endStr = prefs.getString(PREF_CURRICULUM_RANGE_END, null)
+		val firstWeekStartDate = prefs.getString(PREF_FIRST_WEEK_START_DATE, null)
+		val weekCount = prefs.getInt(PREF_WEEK_COUNT, 0)
 
 		if (json != null) {
 			val list = parseJsonToCourseList(json)
@@ -89,6 +95,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 				courseList = list
 			)
 		}
+		
+		_uiState.value = _uiState.value.copy(
+			firstWeekStartDate = firstWeekStartDate,
+			weekCount = weekCount
+		)
+
 		if (startStr != null) cachedStart = LocalDate.parse(startStr)
 		if (endStr != null) cachedEnd = LocalDate.parse(endStr)
 	}
@@ -115,7 +127,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 			e.printStackTrace()
 		}
 		// 重置状态
-		_uiState.value = LoginUiState()
+		_uiState.value = MySHSMUUiState()
 	}
 
 	fun messageShown() {
@@ -183,6 +195,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 			putString("username", user)
 			putString("password", pwd)
 		}
+	}
+
+	fun updateFirstWeekStartDate(dateStr: String) {
+		prefs.edit { putString(PREF_FIRST_WEEK_START_DATE, dateStr) }
+		_uiState.value = _uiState.value.copy(firstWeekStartDate = dateStr)
+	}
+
+	fun updateWeekCount(count: Int) {
+		prefs.edit { putInt(PREF_WEEK_COUNT, count) }
+		_uiState.value = _uiState.value.copy(weekCount = count)
 	}
 
 	fun refreshAllData() {

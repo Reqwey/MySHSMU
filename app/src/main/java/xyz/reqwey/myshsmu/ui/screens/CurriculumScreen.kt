@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import xyz.reqwey.myshsmu.MySHSMUUiState
 import xyz.reqwey.myshsmu.model.CourseItem
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -60,7 +61,7 @@ private val STANDARD_TIME_SLOTS = listOf(
 
 @Composable
 fun CurriculumScreen(
-	courseList: List<CourseItem>,
+	uiState: MySHSMUUiState,
 	onPageChanged: (LocalDate) -> Unit
 ) {
 	val initialDate = remember { LocalDate.now() }
@@ -79,9 +80,22 @@ fun CurriculumScreen(
 	// Title derived from current page
 	val currentWeekOffset = pagerState.currentPage - initialPage
 	val currentBaseDate = initialDate.plusWeeks(currentWeekOffset.toLong())
-	val startOfCurrentWeek = currentBaseDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-	val weekLabel =
-		"${startOfCurrentWeek.year} 年第 ${startOfCurrentWeek.get(java.time.temporal.IsoFields.WEEK_OF_WEEK_BASED_YEAR)} 周"
+	val weekLabel = if (uiState.firstWeekStartDate != null) {
+		val firstWeekStartDate = LocalDate.parse(uiState.firstWeekStartDate)
+		if (firstWeekStartDate.isAfter(currentBaseDate)) {
+			"学期未开始"
+		} else {
+			val weekCount = uiState.weekCount
+			val weekNumber = (currentBaseDate.toEpochDay() - firstWeekStartDate.toEpochDay()) / 7 + 1
+			if (weekNumber > weekCount) {
+				"学期已结束"
+			} else {
+				"第 $weekNumber 周"
+			}
+		}
+	} else {
+		"请设置第一周起始日"
+	}
 
 	Column(
 		modifier = Modifier
@@ -101,7 +115,7 @@ fun CurriculumScreen(
 		) { page ->
 			val pageOffset = page - initialPage
 			val pageDate = initialDate.plusWeeks(pageOffset.toLong())
-			WeekSchedulePage(baseDate = pageDate, allCourses = courseList)
+			WeekSchedulePage(baseDate = pageDate, allCourses = uiState.courseList)
 		}
 	}
 }
@@ -249,7 +263,7 @@ fun WeekSchedulePage(baseDate: LocalDate, allCourses: List<CourseItem>) {
 						// If strict match fails, try finding the "earliest next slot" or just floor it
 						if (startSlot == -1) {
 							// Fallback: approximate based on hour? Or just skip/log error.
-							// For robustness, let's just find closest slot start
+							// For robustness, let's just find the closest slot start.
 							startSlot = STANDARD_TIME_SLOTS.indexOfFirst { it.first.hour == courseStart.hour }
 							if (startSlot == -1 && STANDARD_TIME_SLOTS.isNotEmpty()) startSlot =
 								0 // Valid fallback

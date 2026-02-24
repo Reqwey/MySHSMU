@@ -13,13 +13,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
-import xyz.reqwey.myshsmu.LoginUiState
+import xyz.reqwey.myshsmu.MySHSMUUiState
 import xyz.reqwey.myshsmu.MainViewModel
 
 data class NavItem(val label: String, val icon: ImageVector)
 
 @Composable
-fun MainScreen(uiState: LoginUiState, viewModel: MainViewModel) {
+fun MainScreen(uiState: MySHSMUUiState, viewModel: MainViewModel) {
 	var selectedItemIndex by rememberSaveable { mutableIntStateOf(0) }
 
 	val navItems = listOf(
@@ -43,7 +43,7 @@ fun MainScreen(uiState: LoginUiState, viewModel: MainViewModel) {
 		// Content based on selection
 		when (selectedItemIndex) {
 			0 -> CurriculumScreen(
-				uiState.courseList,
+				uiState = uiState,
 				onPageChanged = { date -> viewModel.onWeekPageChanged(date) })
 
 			1 -> ScoreScreen(
@@ -53,7 +53,9 @@ fun MainScreen(uiState: LoginUiState, viewModel: MainViewModel) {
 			)
 
 			2 -> SettingsScreen(
-				username = uiState.savedUsername,
+				uiState = uiState,
+				onFirstWeekStartDateChanged = { viewModel.updateFirstWeekStartDate(it) },
+				onWeekCountChanged = { viewModel.updateWeekCount(it) },
 				onLogout = { viewModel.logout() },
 				onRefresh = { viewModel.refreshAllData() }
 			)

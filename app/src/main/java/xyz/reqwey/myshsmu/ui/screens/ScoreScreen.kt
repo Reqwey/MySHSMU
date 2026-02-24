@@ -1,7 +1,6 @@
 package xyz.reqwey.myshsmu.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,13 +32,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import xyz.reqwey.myshsmu.LoginUiState
+import xyz.reqwey.myshsmu.MySHSMUUiState
 import xyz.reqwey.myshsmu.model.ScoreItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScoreScreen(
-	uiState: LoginUiState,
+	uiState: MySHSMUUiState,
 	onYearSelected: (String) -> Unit,
 	onSemesterSelected: (Int) -> Unit
 ) {
