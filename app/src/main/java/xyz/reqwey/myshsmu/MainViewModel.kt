@@ -11,7 +11,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import xyz.reqwey.myshsmu.model.CourseDetail
 import xyz.reqwey.myshsmu.model.CourseItem
+import xyz.reqwey.myshsmu.model.CourseItemIds
 import xyz.reqwey.myshsmu.model.ScoreItem
 import xyz.reqwey.myshsmu.network.NetworkModule
 import xyz.reqwey.myshsmu.service.ShsmuService
@@ -28,6 +30,7 @@ data class MySHSMUUiState(
 	val savedUsername: String = "",
 	val savedPassword: String = "",
 	val courseList: List<CourseItem> = emptyList(),
+	val courseDetail: CourseDetail? = null,
 	val scoreYears: List<String> = emptyList(),
 	val selectedYear: String? = null,
 	val selectedSemester: Int = 1,
@@ -239,13 +242,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 				val jsonObj = shsmuService.getCurriculum(startStr, endStr)
 				mergeAndSaveCurriculumData(jsonObj, start, end)
 			} catch (e: Exception) {
-				val msg = "错误：${e.message}"
-				showMessage(msg)
+				showMessage("错误：${e.message}")
 				e.printStackTrace()
 			} finally {
 				_uiState.value = _uiState.value.copy(isLoading = false)
 			}
 		}
+	}
+
+	fun onCourseSelected(course: CourseItem) {
+		viewModelScope.launch {
+			try {
+				_uiState.value = _uiState.value.copy(courseDetail = null)
+				val jsonArr = shsmuService.getCourseDetail(course)
+				_uiState.value = _uiState.value.copy(courseDetail = parseCourseDetailObject(jsonArr))
+			} catch (e: Exception) {
+				showMessage("错误：${e.message}")
+				e.printStackTrace()
+			}
+		}
+	}
+
+	private fun parseCourseDetailObject(obj: JSONArray): CourseDetail? {
+		try {
+			val detailObj = obj.optJSONObject(0)
+			if (detailObj != null) {
+				return CourseDetail(
+					name = detailObj.optString("CourseName", ""),
+					college = detailObj.optString("College", ""),
+					teacher = detailObj.optString("Teacher", "") + detailObj.optString("Title", ""),
+					content = detailObj.optString("Content", ""),
+					classes = detailObj.optString("ClassCode", ""),
+					location = detailObj.optString("Classroom_Name", "")
+				)
+			}
+		} catch (e: Exception) {
+			e.printStackTrace()
+		}
+		return null
 	}
 
 	fun fetchScoreData(year: String? = null, semester: Int? = null) {
@@ -347,6 +381,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 				obj.put("Classroom", course.location)
 				obj.put("Start", course.startTime.toString())
 				obj.put("End", course.endTime.toString())
+				obj.put("MCSID", course.ids.mcsId)
+				obj.put("CSID", course.ids.csId)
+				obj.put("CurriculumID", course.ids.curriculumId)
+				obj.put("XXKMID", course.ids.xxkmId)
 				newJsonArray.put(obj)
 			}
 			newJsonRoot.put("List", newJsonArray)
@@ -396,6 +434,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 				val classroom = obj.optString("Classroom", "Unknown").replace("&nbsp;", "")
 				val startStr = obj.optString("Start")
 				val endStr = obj.optString("End")
+				val ids = CourseItemIds(
+					mcsId = obj.optString("MCSID", ""),
+					csId = obj.optInt("CSID", 0),
+					curriculumId = obj.optInt("CurriculumID", 0),
+					xxkmId = obj.optString("XXKMID", "")
+				)
 
 				if (startStr.isNotEmpty() && endStr.isNotEmpty()) {
 					val start = LocalDateTime.parse(startStr.replace(" ", "T"))
@@ -410,7 +454,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 							location = classroom,
 							startTime = start,
 							endTime = end,
-							color = colorPalette[colorIndex]
+							color = colorPalette[colorIndex],
+							ids = ids
 						)
 					)
 				}

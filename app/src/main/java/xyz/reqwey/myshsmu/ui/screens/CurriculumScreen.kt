@@ -1,5 +1,8 @@
 package xyz.reqwey.myshsmu.ui.screens
 
+import android.app.Dialog
+import android.widget.Spinner
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -17,13 +20,27 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.List
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,6 +49,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import xyz.reqwey.myshsmu.MySHSMUUiState
+import xyz.reqwey.myshsmu.model.CourseDetail
 import xyz.reqwey.myshsmu.model.CourseItem
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -62,7 +80,8 @@ private val STANDARD_TIME_SLOTS = listOf(
 @Composable
 fun CurriculumScreen(
 	uiState: MySHSMUUiState,
-	onPageChanged: (LocalDate) -> Unit
+	onPageChanged: (LocalDate) -> Unit,
+	onCourseSelected: (CourseItem) -> Unit
 ) {
 	val initialDate = remember { LocalDate.now() }
 	val initialPage = Int.MAX_VALUE / 2
@@ -115,14 +134,23 @@ fun CurriculumScreen(
 		) { page ->
 			val pageOffset = page - initialPage
 			val pageDate = initialDate.plusWeeks(pageOffset.toLong())
-			WeekSchedulePage(baseDate = pageDate, allCourses = uiState.courseList)
+			WeekSchedulePage(
+				baseDate = pageDate,
+				allCourses = uiState.courseList,
+				currentCourseDetail = uiState.courseDetail,
+				onCourseSelected = onCourseSelected
+			)
 		}
 	}
 }
 
 
 @Composable
-fun WeekSchedulePage(baseDate: LocalDate, allCourses: List<CourseItem>) {
+fun WeekSchedulePage(
+	baseDate: LocalDate,
+	allCourses: List<CourseItem>,
+	currentCourseDetail: CourseDetail? = null,
+	onCourseSelected: (CourseItem) -> Unit) {
 	val today = LocalDate.now()
 
 	// Calculate Week Dates (Monday based)
@@ -135,6 +163,12 @@ fun WeekSchedulePage(baseDate: LocalDate, allCourses: List<CourseItem>) {
 	val weekCourses = allCourses.filter { course ->
 		val courseDate = course.startTime.toLocalDate()
 		!courseDate.isBefore(startOfWeek) && !courseDate.isAfter(endOfWeek)
+	}
+
+	var showCourseDetailDialog by remember { mutableStateOf(false) }
+
+	if (showCourseDetailDialog) {
+		CourseDetailDialog(courseDetail = currentCourseDetail, onDismiss = { showCourseDetailDialog = false })
 	}
 
 	BoxWithConstraints(
@@ -285,7 +319,11 @@ fun WeekSchedulePage(baseDate: LocalDate, allCourses: List<CourseItem>) {
 										.size(dayColWidth - 2.dp, height - 2.dp)
 										.padding(1.dp),
 									shape = RoundedCornerShape(8.dp),
-									elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+									elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+									onClick = {
+										showCourseDetailDialog = true
+										onCourseSelected(course)
+									}
 								) {
 									Box(
 										modifier = Modifier
@@ -322,6 +360,74 @@ fun WeekSchedulePage(baseDate: LocalDate, allCourses: List<CourseItem>) {
 			}
 		}
 	}
+}
+
+@Composable
+fun CourseDetailDialog(courseDetail: CourseDetail?, onDismiss: () -> Unit) {
+	AlertDialog(
+		onDismissRequest = onDismiss,
+		confirmButton = {
+			TextButton(onClick = onDismiss) {
+				Text("关闭")
+			}
+		},
+		title = {
+			Text(
+				courseDetail?.name ?: "课程详情",
+				color = MaterialTheme.colorScheme.primary
+			)
+		},
+		text = {
+			if (courseDetail != null) {
+				Column {
+					Row {
+						Icon(imageVector = Icons.Outlined.Info, contentDescription = null, modifier = Modifier.size(20.dp))
+						Spacer(modifier = Modifier.width(8.dp))
+						Text(courseDetail.content)
+					}
+
+					Spacer(modifier = Modifier.height(12.dp))
+
+					Row {
+						Icon(imageVector = Icons.Outlined.Person, contentDescription = null, modifier = Modifier.size(20.dp))
+						Spacer(modifier = Modifier.width(8.dp))
+						Text(courseDetail.teacher)
+					}
+
+					Spacer(modifier = Modifier.height(12.dp))
+
+					Row {
+						Icon(imageVector = Icons.Outlined.Star, contentDescription = null, modifier = Modifier.size(20.dp))
+						Spacer(modifier = Modifier.width(8.dp))
+						Text(courseDetail.college)
+					}
+
+					Spacer(modifier = Modifier.height(12.dp))
+
+					Row {
+						Icon(imageVector = Icons.Outlined.LocationOn, contentDescription = null, modifier = Modifier.size(20.dp))
+						Spacer(modifier = Modifier.width(8.dp))
+						Text(courseDetail.location)
+					}
+
+					Spacer(modifier = Modifier.height(12.dp))
+
+					Row {
+						Icon(imageVector = Icons.Outlined.Home, contentDescription = null, modifier = Modifier.size(20.dp))
+						Spacer(modifier = Modifier.width(8.dp))
+						Text(courseDetail.classes)
+					}
+				}
+			} else {
+				Box(
+					modifier = Modifier.fillMaxWidth(),
+					contentAlignment = Alignment.Center
+				) {
+					CircularProgressIndicator(color = MaterialTheme.colorScheme.secondary)
+				}
+			}
+		}
+	)
 }
 
 

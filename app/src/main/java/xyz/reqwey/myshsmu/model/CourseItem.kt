@@ -10,5 +10,6 @@ data class CourseItem(
 	val startTime: LocalDateTime,
 	val endTime: LocalDateTime,
 	val count: Int,
-	val color: Color
+	val color: Color,
+	val ids: CourseItemIds
 )

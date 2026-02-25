@@ -6,11 +6,15 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import xyz.reqwey.myshsmu.model.CourseItem
 import xyz.reqwey.myshsmu.network.PersistentCookieJar
 import xyz.reqwey.myshsmu.utils.CaptchaSolver
 import xyz.reqwey.myshsmu.utils.RsaCrypto
@@ -177,7 +181,7 @@ class ShsmuService(
 	suspend fun getCurriculum(start: String, end: String): JSONObject {
 		return withContext(Dispatchers.IO) {
 			val url =
-				"${homeUrl}/Home/GetCurriculumTable?vpn-12-o2-jwstu.shsmu.edu.cn=&Start=$start&End=$end"
+				"${homeUrl}/Home/GetCurriculumTable?vpn-12-o2-jwstu.shsmu.edu.cn&Start=$start&End=$end"
 
 			Log.i("Curriculum", "Requesting: $url")
 
@@ -204,6 +208,48 @@ class ShsmuService(
 				}
 			} catch (e: Exception) {
 				Log.e("Curriculum", "Network request failed", e)
+				throw e
+			}
+		}
+	}
+
+	suspend fun getCourseDetail(course: CourseItem): JSONArray {
+		return withContext(Dispatchers.IO) {
+			val urlBuilder =
+				"${homeUrl}/Home/GetCalendarTable?vpn-12-o2-jwstu.shsmu.edu.cn".toHttpUrlOrNull()
+					?.newBuilder()
+			urlBuilder?.apply {
+				addQueryParameter("MCSID", course.ids.mcsId)
+				addQueryParameter("CSID", course.ids.csId.toString())
+				addQueryParameter("CurriculumID", course.ids.curriculumId.toString())
+				addQueryParameter("XXKMID", course.ids.xxkmId)
+				addQueryParameter("CurriculumType", course.type)
+			}
+			val url = urlBuilder?.build().toString()
+
+			Log.i("CourseDetail", "Requesting: $url")
+			val req = Request.Builder()
+				.url(url)
+				.get()
+				.header("Accept", "application/json, text/javascript, */*; q=0.01")
+				.build()
+			try {
+				client.newCall(req).execute().use { resp ->
+					if (resp.isSuccessful) {
+						val body = resp.body.string()
+						Log.d("CourseDetail", "Response Body: $body")
+						if (body.isBlank()) {
+							throw Exception("Response body is empty")
+						}
+						JSONArray(body)
+					} else {
+						val errorBody = resp.body.string()
+						Log.e("CourseDetail", "HTTP ${resp.code}: $errorBody")
+						throw Exception("HTTP ${resp.code}: $errorBody")
+					}
+				}
+			} catch (e: Exception) {
+				Log.e("CourseDetail", "Network request failed", e)
 				throw e
 			}
 		}

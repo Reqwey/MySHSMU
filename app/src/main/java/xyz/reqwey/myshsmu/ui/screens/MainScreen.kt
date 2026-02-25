@@ -44,7 +44,9 @@ fun MainScreen(uiState: MySHSMUUiState, viewModel: MainViewModel) {
 		when (selectedItemIndex) {
 			0 -> CurriculumScreen(
 				uiState = uiState,
-				onPageChanged = { date -> viewModel.onWeekPageChanged(date) })
+				onPageChanged = { date -> viewModel.onWeekPageChanged(date) },
+				onCourseSelected = { course -> viewModel.onCourseSelected(course) }
+			)
 
 			1 -> ScoreScreen(
 				uiState = uiState,
