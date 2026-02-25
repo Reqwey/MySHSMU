@@ -20,6 +20,7 @@ import xyz.reqwey.myshsmu.service.ShsmuService
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import xyz.reqwey.myshsmu.utils.CurriculumUtils
 
 // UI 状态数据类
 data class MySHSMUUiState(
@@ -92,7 +93,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		val weekCount = prefs.getInt(PREF_WEEK_COUNT, 0)
 
 		if (json != null) {
-			val list = parseJsonToCourseList(json)
+			val list = CurriculumUtils.parseJsonToCourseList(json)
 			_uiState.value = _uiState.value.copy(
 				curriculumJson = json,
 				courseList = list
@@ -270,7 +271,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 				return CourseDetail(
 					name = detailObj.optString("CourseName", ""),
 					college = detailObj.optString("College", ""),
-					teacher = detailObj.optString("Teacher", "") + detailObj.optString("Title", ""),
+					teacher = "${detailObj.optString("Teacher", "")} ${detailObj.optString("Title", "")}",
 					content = detailObj.optString("Content", ""),
 					classes = detailObj.optString("ClassCode", ""),
 					location = detailObj.optString("Classroom_Name", "")
@@ -363,8 +364,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	) {
 		try {
 			val oldJsonStr = prefs.getString(PREF_CURRICULUM_JSON, "{\"List\":[]}") ?: "{\"List\":[]}"
-			val oldList = parseJsonToCourseList(oldJsonStr)
-			val newList = parseJsonToCourseList(newData.toString())
+			val oldList = CurriculumUtils.parseJsonToCourseList(oldJsonStr)
+			val newList = CurriculumUtils.parseJsonToCourseList(newData.toString())
 
 			val mergedMap = oldList.associateBy { "${it.title}_${it.startTime}" }.toMutableMap()
 			newList.forEach { mergedMap["${it.title}_${it.startTime}"] = it }
@@ -413,58 +414,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		}
 	}
 
-	private fun parseJsonToCourseList(json: String): List<CourseItem> {
-		val list = mutableListOf<CourseItem>()
-		try {
-			if (json.startsWith("[")) return emptyList()
-			val root = JSONObject(json)
-			val jsonArray = root.optJSONArray("List") ?: return emptyList()
 
-			val colorPalette = listOf(
-				Color(0xFFFFCDD2), Color(0xFFC8E6C9), Color(0xFFBBDEFB),
-				Color(0xFFE1BEE7), Color(0xFFFFF9C4), Color(0xFFFFE0B2),
-				Color(0xFFD1C4E9), Color(0xFFB2DFDB), Color(0xFFF8BBD0)
-			)
-
-			for (i in 0 until jsonArray.length()) {
-				val obj = jsonArray.getJSONObject(i)
-				val title = obj.optString("Curriculum", "Unknown")
-				val type = obj.optString("CurriculumType", "Unknown")
-				val count = obj.optInt("CourseCount", 0)
-				val classroom = obj.optString("Classroom", "Unknown").replace("&nbsp;", "")
-				val startStr = obj.optString("Start")
-				val endStr = obj.optString("End")
-				val ids = CourseItemIds(
-					mcsId = obj.optString("MCSID", ""),
-					csId = obj.optInt("CSID", 0),
-					curriculumId = obj.optInt("CurriculumID", 0),
-					xxkmId = obj.optString("XXKMID", "")
-				)
-
-				if (startStr.isNotEmpty() && endStr.isNotEmpty()) {
-					val start = LocalDateTime.parse(startStr.replace(" ", "T"))
-					val end = LocalDateTime.parse(endStr.replace(" ", "T"))
-					val colorIndex = kotlin.math.abs(title.hashCode()) % colorPalette.size
-
-					list.add(
-						CourseItem(
-							title = title,
-							type = type,
-							count = count,
-							location = classroom,
-							startTime = start,
-							endTime = end,
-							color = colorPalette[colorIndex],
-							ids = ids
-						)
-					)
-				}
-			}
-		} catch (e: Exception) {
-			e.printStackTrace()
-		}
-		return list
-	}
 
 	private fun showMessage(msg: String) {
 		_uiState.value = _uiState.value.copy(userMessage = msg)
