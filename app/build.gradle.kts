@@ -13,8 +13,8 @@ android {
         applicationId = "xyz.reqwey.myshsmu"
         minSdk = 31
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.4"
+        versionCode = 20
+        versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

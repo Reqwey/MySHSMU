@@ -321,8 +321,10 @@ fun WeekSchedulePage(
 									shape = RoundedCornerShape(8.dp),
 									elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
 									onClick = {
-										showCourseDetailDialog = true
-										onCourseSelected(course)
+										if (course.type != "考试") {
+											showCourseDetailDialog = true
+											onCourseSelected(course)
+										}
 									}
 								) {
 									Box(

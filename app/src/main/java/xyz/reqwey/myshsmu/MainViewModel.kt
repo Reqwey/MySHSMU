@@ -21,6 +21,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import xyz.reqwey.myshsmu.utils.CurriculumUtils
+import androidx.glance.appwidget.updateAll
+import xyz.reqwey.myshsmu.widget.CurriculumWidget
 
 // UI 状态数据类
 data class MySHSMUUiState(
@@ -408,6 +410,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 				courseList = finalCourseList,
 				curriculumJson = finalJsonStr
 			)
+
+			viewModelScope.launch {
+				try {
+					CurriculumWidget().updateAll(getApplication())
+				} catch (e: Exception) {
+					e.printStackTrace()
+				}
+			}
 		} catch (e: Exception) {
 			e.printStackTrace()
 			showMessage("数据存储失败：${e.message}")
