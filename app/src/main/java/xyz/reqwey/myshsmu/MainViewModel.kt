@@ -40,7 +40,8 @@ data class MySHSMUUiState(
 	val scoreList: List<ScoreItem> = emptyList(),
 	val gpaInfo: String? = null,
 	val firstWeekStartDate: String? = null,
-	val weekCount: Int = 0
+	val weekCount: Int = 0,
+	val courseBlockHeight: Int = 60
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -62,6 +63,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	private val PREF_CURRICULUM_JSON = "curriculum_json"
 	private val PREF_FIRST_WEEK_START_DATE = "first_week_start_date"
 	private val PREF_WEEK_COUNT = "week_count"
+	private val PREF_COURSE_BLOCK_HEIGHT = "course_block_height"
 
 	private val shsmuService: ShsmuService
 	private val prefs by lazy { application.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
@@ -93,6 +95,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		val endStr = prefs.getString(PREF_CURRICULUM_RANGE_END, null)
 		val firstWeekStartDate = prefs.getString(PREF_FIRST_WEEK_START_DATE, null)
 		val weekCount = prefs.getInt(PREF_WEEK_COUNT, 0)
+		val courseBlockHeight = prefs.getInt(PREF_COURSE_BLOCK_HEIGHT, 60)
 
 		if (json != null) {
 			val list = CurriculumUtils.parseJsonToCourseList(json)
@@ -101,10 +104,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 				courseList = list
 			)
 		}
-		
+
 		_uiState.value = _uiState.value.copy(
 			firstWeekStartDate = firstWeekStartDate,
-			weekCount = weekCount
+			weekCount = weekCount,
+			courseBlockHeight = courseBlockHeight,
 		)
 
 		if (startStr != null) cachedStart = LocalDate.parse(startStr)
@@ -213,6 +217,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		_uiState.value = _uiState.value.copy(weekCount = count)
 	}
 
+	fun updateCourseBlockHeight(height: Int) {
+		prefs.edit { putInt(PREF_COURSE_BLOCK_HEIGHT, height) }
+		_uiState.value = _uiState.value.copy(courseBlockHeight = height)
+	}
+
 	fun refreshAllData() {
 		val center = LocalDate.now()
 		fetchWeekData(center.minusMonths(2), center.plusMonths(2))
@@ -258,7 +267,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 			try {
 				_uiState.value = _uiState.value.copy(courseDetail = null)
 				val jsonArr = shsmuService.getCourseDetail(course)
-				_uiState.value = _uiState.value.copy(courseDetail = parseCourseDetailObject(jsonArr))
+				_uiState.value =
+					_uiState.value.copy(courseDetail = parseCourseDetailObject(jsonArr))
 			} catch (e: Exception) {
 				showMessage("错误：${e.message}")
 				e.printStackTrace()
@@ -273,7 +283,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 				return CourseDetail(
 					name = detailObj.optString("CourseName", ""),
 					college = detailObj.optString("College", ""),
-					teacher = "${detailObj.optString("Teacher", "")} ${detailObj.optString("Title", "")}",
+					teacher = "${detailObj.optString("Teacher", "")} ${
+						detailObj.optString(
+							"Title",
+							""
+						)
+					}",
 					content = detailObj.optString("Content", ""),
 					classes = detailObj.optString("ClassCode", ""),
 					location = detailObj.optString("Classroom_Name", "")
@@ -323,7 +338,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
 				val gpaInfo = jsonObj.optString("4", "")
 
-				val finalYear = if (targetYear.isEmpty() && years.isNotEmpty()) years.last() else targetYear
+				val finalYear =
+					if (targetYear.isEmpty() && years.isNotEmpty()) years.last() else targetYear
 
 				_uiState.value = _uiState.value.copy(
 					scoreYears = years,
@@ -365,7 +381,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		fetchEnd: LocalDate
 	) {
 		try {
-			val oldJsonStr = prefs.getString(PREF_CURRICULUM_JSON, "{\"List\":[]}") ?: "{\"List\":[]}"
+			val oldJsonStr =
+				prefs.getString(PREF_CURRICULUM_JSON, "{\"List\":[]}") ?: "{\"List\":[]}"
 			val oldList = CurriculumUtils.parseJsonToCourseList(oldJsonStr)
 			val newList = CurriculumUtils.parseJsonToCourseList(newData.toString())
 
@@ -395,7 +412,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
 			val newStart =
 				if (cachedStart == null || fetchStart.isBefore(cachedStart)) fetchStart else cachedStart
-			val newEnd = if (cachedEnd == null || fetchEnd.isAfter(cachedEnd)) fetchEnd else cachedEnd
+			val newEnd =
+				if (cachedEnd == null || fetchEnd.isAfter(cachedEnd)) fetchEnd else cachedEnd
 
 			cachedStart = newStart
 			cachedEnd = newEnd
@@ -425,14 +443,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	}
 
 
-
 	private fun showMessage(msg: String) {
 		_uiState.value = _uiState.value.copy(userMessage = msg)
 	}
 
 	private fun loadPubKey(): String? {
 		return try {
-			getApplication<Application>().assets.open("pubkey.pem").bufferedReader().use { it.readText() }
+			getApplication<Application>().assets.open("pubkey.pem").bufferedReader()
+				.use { it.readText() }
 		} catch (e: Exception) {
 			null
 		}

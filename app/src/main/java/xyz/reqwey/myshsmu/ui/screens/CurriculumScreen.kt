@@ -135,7 +135,8 @@ fun CurriculumScreen(
 				baseDate = pageDate,
 				allCourses = uiState.courseList,
 				currentCourseDetail = uiState.courseDetail,
-				onCourseSelected = onCourseSelected
+				onCourseSelected = onCourseSelected,
+				courseBlockHeight = uiState.courseBlockHeight
 			)
 		}
 	}
@@ -147,7 +148,8 @@ fun WeekSchedulePage(
 	baseDate: LocalDate,
 	allCourses: List<CourseItem>,
 	currentCourseDetail: CourseDetail? = null,
-	onCourseSelected: (CourseItem) -> Unit
+	onCourseSelected: (CourseItem) -> Unit,
+	courseBlockHeight: Int,
 ) {
 	val today = LocalDate.now()
 
@@ -178,7 +180,7 @@ fun WeekSchedulePage(
 		val timeColWidth = 40.dp
 		val dayColWidth = (totalWidth - timeColWidth) / 7
 		val headerHeight = 50.dp
-		val cellHeight = 60.dp
+		val cellHeight = courseBlockHeight.dp
 
 		Column(modifier = Modifier.fillMaxSize()) {
 			// --- Sticky Header Section ---

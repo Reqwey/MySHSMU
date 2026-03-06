@@ -58,6 +58,7 @@ fun MainScreen(uiState: MySHSMUUiState, viewModel: MainViewModel) {
 				uiState = uiState,
 				onFirstWeekStartDateChanged = { viewModel.updateFirstWeekStartDate(it) },
 				onWeekCountChanged = { viewModel.updateWeekCount(it) },
+				onCourseBlockHeightChanged = { viewModel.updateCourseBlockHeight(it) },
 				onLogout = { viewModel.logout() },
 				onRefresh = { viewModel.refreshAllData() }
 			)
