@@ -1,8 +1,5 @@
 package xyz.reqwey.myshsmu.ui.screens
 
-import android.app.Dialog
-import android.widget.Spinner
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -23,7 +20,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.List
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Star
@@ -105,7 +101,8 @@ fun CurriculumScreen(
 			"学期未开始"
 		} else {
 			val weekCount = uiState.weekCount
-			val weekNumber = (currentBaseDate.toEpochDay() - firstWeekStartDate.toEpochDay()) / 7 + 1
+			val weekNumber =
+				(currentBaseDate.toEpochDay() - firstWeekStartDate.toEpochDay()) / 7 + 1
 			if (weekNumber > weekCount) {
 				"学期已结束"
 			} else {
@@ -150,7 +147,8 @@ fun WeekSchedulePage(
 	baseDate: LocalDate,
 	allCourses: List<CourseItem>,
 	currentCourseDetail: CourseDetail? = null,
-	onCourseSelected: (CourseItem) -> Unit) {
+	onCourseSelected: (CourseItem) -> Unit
+) {
 	val today = LocalDate.now()
 
 	// Calculate Week Dates (Monday based)
@@ -168,7 +166,9 @@ fun WeekSchedulePage(
 	var showCourseDetailDialog by remember { mutableStateOf(false) }
 
 	if (showCourseDetailDialog) {
-		CourseDetailDialog(courseDetail = currentCourseDetail, onDismiss = { showCourseDetailDialog = false })
+		CourseDetailDialog(
+			courseDetail = currentCourseDetail,
+			onDismiss = { showCourseDetailDialog = false })
 	}
 
 	BoxWithConstraints(
@@ -204,7 +204,8 @@ fun WeekSchedulePage(
 						val headerColor =
 							if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
 
-						val dayName = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
+						val dayName =
+							date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
 						val dayNumber = date.dayOfMonth.toString()
 
 						Box(
@@ -276,7 +277,8 @@ fun WeekSchedulePage(
 						// Calculate Grid Position
 						// Day Index (0-6)
 						val dayIndex =
-							ChronoUnit.DAYS.between(startOfWeek, course.startTime.toLocalDate()).toInt()
+							ChronoUnit.DAYS.between(startOfWeek, course.startTime.toLocalDate())
+								.toInt()
 
 						// Find Start Slot
 						val courseStart = course.startTime.toLocalTime()
@@ -288,7 +290,12 @@ fun WeekSchedulePage(
 						for (i in STANDARD_TIME_SLOTS.indices) {
 							val slotStart = STANDARD_TIME_SLOTS[i].first
 							// Allow slight variance or exact match
-							if (!courseStart.isBefore(slotStart) && courseStart.isBefore(slotStart.plusMinutes(41))) { // 40 min class + margin
+							if (!courseStart.isBefore(slotStart) && courseStart.isBefore(
+									slotStart.plusMinutes(
+										41
+									)
+								)
+							) { // 40 min class + margin
 								startSlot = i
 								break
 							}
@@ -298,7 +305,8 @@ fun WeekSchedulePage(
 						if (startSlot == -1) {
 							// Fallback: approximate based on hour? Or just skip/log error.
 							// For robustness, let's just find the closest slot start.
-							startSlot = STANDARD_TIME_SLOTS.indexOfFirst { it.first.hour == courseStart.hour }
+							startSlot =
+								STANDARD_TIME_SLOTS.indexOfFirst { it.first.hour == courseStart.hour }
 							if (startSlot == -1 && STANDARD_TIME_SLOTS.isNotEmpty()) startSlot =
 								0 // Valid fallback
 						}
@@ -383,7 +391,11 @@ fun CourseDetailDialog(courseDetail: CourseDetail?, onDismiss: () -> Unit) {
 			if (courseDetail != null) {
 				Column {
 					Row {
-						Icon(imageVector = Icons.Outlined.Info, contentDescription = null, modifier = Modifier.size(20.dp))
+						Icon(
+							imageVector = Icons.Outlined.Info,
+							contentDescription = null,
+							modifier = Modifier.size(20.dp)
+						)
 						Spacer(modifier = Modifier.width(8.dp))
 						Text(courseDetail.content)
 					}
@@ -391,7 +403,11 @@ fun CourseDetailDialog(courseDetail: CourseDetail?, onDismiss: () -> Unit) {
 					Spacer(modifier = Modifier.height(12.dp))
 
 					Row {
-						Icon(imageVector = Icons.Outlined.Person, contentDescription = null, modifier = Modifier.size(20.dp))
+						Icon(
+							imageVector = Icons.Outlined.Person,
+							contentDescription = null,
+							modifier = Modifier.size(20.dp)
+						)
 						Spacer(modifier = Modifier.width(8.dp))
 						Text(courseDetail.teacher)
 					}
@@ -399,7 +415,11 @@ fun CourseDetailDialog(courseDetail: CourseDetail?, onDismiss: () -> Unit) {
 					Spacer(modifier = Modifier.height(12.dp))
 
 					Row {
-						Icon(imageVector = Icons.Outlined.Star, contentDescription = null, modifier = Modifier.size(20.dp))
+						Icon(
+							imageVector = Icons.Outlined.Star,
+							contentDescription = null,
+							modifier = Modifier.size(20.dp)
+						)
 						Spacer(modifier = Modifier.width(8.dp))
 						Text(courseDetail.college)
 					}
@@ -407,7 +427,11 @@ fun CourseDetailDialog(courseDetail: CourseDetail?, onDismiss: () -> Unit) {
 					Spacer(modifier = Modifier.height(12.dp))
 
 					Row {
-						Icon(imageVector = Icons.Outlined.LocationOn, contentDescription = null, modifier = Modifier.size(20.dp))
+						Icon(
+							imageVector = Icons.Outlined.LocationOn,
+							contentDescription = null,
+							modifier = Modifier.size(20.dp)
+						)
 						Spacer(modifier = Modifier.width(8.dp))
 						Text(courseDetail.location)
 					}
@@ -415,7 +439,11 @@ fun CourseDetailDialog(courseDetail: CourseDetail?, onDismiss: () -> Unit) {
 					Spacer(modifier = Modifier.height(12.dp))
 
 					Row {
-						Icon(imageVector = Icons.Outlined.Home, contentDescription = null, modifier = Modifier.size(20.dp))
+						Icon(
+							imageVector = Icons.Outlined.Home,
+							contentDescription = null,
+							modifier = Modifier.size(20.dp)
+						)
 						Spacer(modifier = Modifier.width(8.dp))
 						Text(courseDetail.classes)
 					}
