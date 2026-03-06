@@ -25,10 +25,12 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Card
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -70,7 +72,10 @@ fun SettingsScreen(
 	onWeekCountChanged: (Int) -> Unit,
 	onCourseBlockHeightChanged: (Int) -> Unit,
 	onLogout: () -> Unit,
-	onRefresh: () -> Unit
+	onRefresh: () -> Unit,
+	onCheckUpdate: () -> Unit,
+	onStartUpdate: () -> Unit,
+	onDismissUpdateDialog: () -> Unit
 ) {
 	var showAboutDialog by remember { mutableStateOf(false) }
 	var showDatePickerDialog by remember { mutableStateOf(false) }
@@ -171,9 +176,40 @@ fun SettingsScreen(
 		)
 	}
 
+	val updateInfo = uiState.updateInfo
+	if (uiState.showUpdateDialog && updateInfo != null) {
+		AlertDialog(
+			onDismissRequest = {
+				if (!updateInfo.forceUpdate) {
+					onDismissUpdateDialog()
+				}
+			},
+			confirmButton = {
+				TextButton(onClick = onStartUpdate) {
+					Text("立即更新")
+				}
+			},
+			dismissButton = {
+				if (!updateInfo.forceUpdate) {
+					TextButton(onClick = onDismissUpdateDialog) {
+						Text("稍后")
+					}
+				}
+			},
+			title = { Text("发现新版本 v${updateInfo.version}") },
+			text = {
+				Text(
+					updateInfo.updateLog.ifBlank {
+						"检测到新版本，建议尽快更新。"
+					}
+				)
+			}
+		)
+	}
+
 	Column(
 		modifier = Modifier
-			.padding(16.dp)
+			.padding(horizontal = 16.dp)
 			.verticalScroll(rememberScrollState()),
 		verticalArrangement = Arrangement.spacedBy(16.dp),
 		horizontalAlignment = Alignment.CenterHorizontally,
@@ -196,8 +232,7 @@ fun SettingsScreen(
 		Button(
 			onClick = onLogout,
 			modifier = Modifier
-				.fillMaxWidth()
-				.height(50.dp),
+				.fillMaxWidth(),
 			colors = ButtonDefaults.buttonColors(
 				containerColor = MaterialTheme.colorScheme.error
 			)
@@ -293,41 +328,84 @@ fun SettingsScreen(
 					)
 				}
 
-				Row(
-					modifier = Modifier.fillMaxWidth(),
-					horizontalArrangement = Arrangement.SpaceBetween,
-					verticalAlignment = Alignment.CenterVertically
+				FilledTonalButton(
+					onClick = onRefresh,
+					modifier = Modifier
+						.fillMaxWidth()
 				) {
+					Icon(
+						imageVector = Icons.Default.Refresh,
+						contentDescription = "Refresh",
+						modifier = Modifier.size(16.dp)
+					)
+
+					Spacer(modifier = Modifier.width(8.dp))
+
 					Text("更新课程信息")
-					FilledTonalIconButton(
-						onClick = onRefresh,
-					) {
-						Icon(
-							imageVector = Icons.Default.Refresh,
-							contentDescription = "Refresh",
-							modifier = Modifier.size(16.dp)
-						)
-					}
 				}
 			}
 		}
 
-
-		OutlinedButton(
-			onClick = { showAboutDialog = true },
-			modifier = Modifier
-				.fillMaxWidth()
-				.height(50.dp)
+		OutlinedCard(
+			shape = RoundedCornerShape(16.dp),
+			border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
 		) {
-			Icon(
-				imageVector = Icons.Outlined.Info,
-				contentDescription = "Info",
-				modifier = Modifier.size(16.dp)
-			)
+			Column(modifier = Modifier.padding(16.dp)) {
+				Text(
+					"全局设置",
+					fontWeight = FontWeight.Bold,
+					color = MaterialTheme.colorScheme.primary,
+					style = MaterialTheme.typography.bodySmall
+				)
 
-			Spacer(modifier = Modifier.width(8.dp))
+				Spacer(modifier = Modifier.height(16.dp))
 
-			Text("关于")
+				FilledTonalButton(
+					onClick = onCheckUpdate,
+					enabled = !uiState.isCheckingUpdate,
+					modifier = Modifier
+						.fillMaxWidth()
+				) {
+					if (uiState.isCheckingUpdate) {
+						CircularProgressIndicator(
+							modifier = Modifier.size(16.dp),
+							strokeWidth = 2.dp
+						)
+					} else {
+						Icon(
+							imageVector = Icons.Default.Refresh,
+							contentDescription = "CheckUpdate",
+							modifier = Modifier.size(16.dp)
+						)
+					}
+
+					Spacer(modifier = Modifier.width(8.dp))
+
+					Text(
+						if (updateInfo != null) {
+							"新版本: v${updateInfo.version}"
+						} else {
+							"检查更新"
+						}
+					)
+				}
+
+				FilledTonalButton(
+					onClick = { showAboutDialog = true },
+					modifier = Modifier
+						.fillMaxWidth()
+				) {
+					Icon(
+						imageVector = Icons.Outlined.Info,
+						contentDescription = "Info",
+						modifier = Modifier.size(16.dp)
+					)
+
+					Spacer(modifier = Modifier.width(8.dp))
+
+					Text("关于")
+				}
+			}
 		}
 	}
 }

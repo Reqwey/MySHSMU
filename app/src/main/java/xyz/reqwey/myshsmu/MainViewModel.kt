@@ -2,27 +2,39 @@ package xyz.reqwey.myshsmu
 
 import android.app.Application
 import android.content.Context
-import androidx.compose.ui.graphics.Color
+import android.content.Intent
+import android.net.Uri
+import android.util.Log
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import xyz.reqwey.myshsmu.model.CourseDetail
 import xyz.reqwey.myshsmu.model.CourseItem
-import xyz.reqwey.myshsmu.model.CourseItemIds
 import xyz.reqwey.myshsmu.model.ScoreItem
 import xyz.reqwey.myshsmu.network.NetworkModule
 import xyz.reqwey.myshsmu.service.ShsmuService
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import xyz.reqwey.myshsmu.utils.CurriculumUtils
 import androidx.glance.appwidget.updateAll
 import xyz.reqwey.myshsmu.widget.CurriculumWidget
+import androidx.core.net.toUri
+
+data class AppUpdateInfo(
+	val version: String,
+	val versionCode: Int,
+	val downloadUrl: String,
+	val updateLog: String,
+	val forceUpdate: Boolean
+)
 
 // UI 状态数据类
 data class MySHSMUUiState(
@@ -41,7 +53,10 @@ data class MySHSMUUiState(
 	val gpaInfo: String? = null,
 	val firstWeekStartDate: String? = null,
 	val weekCount: Int = 0,
-	val courseBlockHeight: Int = 60
+	val courseBlockHeight: Int = 60,
+	val isCheckingUpdate: Boolean = false,
+	val updateInfo: AppUpdateInfo? = null,
+	val showUpdateDialog: Boolean = false
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -64,6 +79,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	private val PREF_FIRST_WEEK_START_DATE = "first_week_start_date"
 	private val PREF_WEEK_COUNT = "week_count"
 	private val PREF_COURSE_BLOCK_HEIGHT = "course_block_height"
+	private val UPDATE_HOST = "https://myshsmu.reqwey.xyz"
+	private val UPDATE_JSON_URL = "$UPDATE_HOST/api/update.json"
 
 	private val shsmuService: ShsmuService
 	private val prefs by lazy { application.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
@@ -87,6 +104,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
 		// 尝试自动登录
 		checkAutoLogin()
+		checkForUpdates()
 	}
 
 	private fun loadPersistentData() {
@@ -226,6 +244,95 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		val center = LocalDate.now()
 		fetchWeekData(center.minusMonths(2), center.plusMonths(2))
 		fetchScoreData()
+	}
+
+	fun checkForUpdates(manual: Boolean = false) {
+		if (_uiState.value.isCheckingUpdate) return
+
+		viewModelScope.launch {
+			val currentVersionCode = getCurrentVersionCode()
+			_uiState.value = _uiState.value.copy(isCheckingUpdate = true)
+			if (manual) showMessage("正在检查更新...")
+
+			try {
+				val request = Request.Builder().url(UPDATE_JSON_URL).get().build()
+				withContext(Dispatchers.IO) {
+					NetworkModule.client.newCall(request).execute().use { response ->
+						if (!response.isSuccessful) {
+							if (manual) {
+								showMessage("检查更新失败：HTTP ${response.code}")
+							}
+							return@use
+						}
+
+						val body = response.body.string().orEmpty()
+						if (body.isBlank()) {
+							if (manual) showMessage("检查更新失败：响应为空")
+							return@use
+						}
+
+						val updateJson = JSONObject(body)
+						val remoteVersionCode = updateJson.optInt("versionCode", -1)
+
+						if (remoteVersionCode <= currentVersionCode) {
+							_uiState.value = _uiState.value.copy(
+								updateInfo = null,
+								showUpdateDialog = false
+							)
+							if (manual) showMessage("当前已是最新版本")
+							return@use
+						}
+
+						val normalizedDownloadUrl = normalizeDownloadUrl(
+							updateJson.optString("downloadUrl", "")
+						)
+
+						if (normalizedDownloadUrl == null) {
+							if (manual) showMessage("检查更新失败：下载地址无效")
+							return@use
+						}
+
+						val updateInfo = AppUpdateInfo(
+							version = updateJson.optString("version", remoteVersionCode.toString()),
+							versionCode = remoteVersionCode,
+							downloadUrl = normalizedDownloadUrl,
+							updateLog = updateJson.optString("updateLog", ""),
+							forceUpdate = updateJson.optBoolean("forceUpdate", false)
+						)
+
+						_uiState.value = _uiState.value.copy(
+							updateInfo = updateInfo,
+							showUpdateDialog = true
+						)
+
+						if (manual) showMessage("发现新版本 v${updateInfo.version}")
+					}
+				}
+			} catch (e: Exception) {
+				Log.e("CheckForUpdates", "Network request failed", e)
+				if (manual) showMessage("检查更新失败：${e.localizedMessage ?: "未知错误"}")
+			} finally {
+				_uiState.value = _uiState.value.copy(isCheckingUpdate = false)
+			}
+		}
+	}
+
+	fun dismissUpdateDialog() {
+		val current = _uiState.value
+		if (current.updateInfo?.forceUpdate == true) return
+		_uiState.value = current.copy(showUpdateDialog = false)
+	}
+
+	fun startUpdateDownload() {
+		val updateInfo = _uiState.value.updateInfo ?: return
+		try {
+			val intent = Intent(Intent.ACTION_VIEW, updateInfo.downloadUrl.toUri()).apply {
+				addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+			}
+			getApplication<Application>().startActivity(intent)
+		} catch (e: Exception) {
+			showMessage("无法打开下载链接")
+		}
 	}
 
 	fun onWeekPageChanged(date: LocalDate) {
@@ -445,6 +552,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
 	private fun showMessage(msg: String) {
 		_uiState.value = _uiState.value.copy(userMessage = msg)
+	}
+
+	private fun normalizeDownloadUrl(rawUrl: String): String? {
+		val trimmed = rawUrl.trim()
+		if (trimmed.isBlank()) return null
+
+		return when {
+			trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
+			trimmed.startsWith("/") -> "$UPDATE_HOST$trimmed"
+			else -> "$UPDATE_HOST/$trimmed"
+		}
+	}
+
+	private fun getCurrentVersionCode(): Int {
+		return try {
+			val packageInfo = getApplication<Application>().packageManager
+				.getPackageInfo(getApplication<Application>().packageName, 0)
+			packageInfo.longVersionCode.toInt()
+		} catch (_: Exception) {
+			0
+		}
 	}
 
 	private fun loadPubKey(): String? {
