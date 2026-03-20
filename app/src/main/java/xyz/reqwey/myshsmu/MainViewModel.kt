@@ -3,7 +3,6 @@ package xyz.reqwey.myshsmu
 import android.app.Application
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.util.Log
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
@@ -12,6 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.json.JSONArray
@@ -27,6 +28,8 @@ import xyz.reqwey.myshsmu.utils.CurriculumUtils
 import androidx.glance.appwidget.updateAll
 import xyz.reqwey.myshsmu.widget.CurriculumWidget
 import androidx.core.net.toUri
+import xyz.reqwey.myshsmu.model.GlobalNotificationState
+import xyz.reqwey.myshsmu.ui.components.NotificationStatus
 
 data class AppUpdateInfo(
 	val version: String,
@@ -38,17 +41,19 @@ data class AppUpdateInfo(
 
 // UI 状态数据类
 data class MySHSMUUiState(
-	val isLoading: Boolean = false,
-	val userMessage: String? = null,
+	val notificationState: GlobalNotificationState = GlobalNotificationState(),
 	val curriculumJson: String? = null,
+	val isLoggingIn: Boolean = false,
 	val isLoggedIn: Boolean = false,
 	val savedUsername: String = "",
 	val savedPassword: String = "",
+	val isCourseListLoading: Boolean = false,
 	val courseList: List<CourseItem> = emptyList(),
 	val courseDetail: CourseDetail? = null,
 	val scoreYears: List<String> = emptyList(),
 	val selectedYear: String? = null,
 	val selectedSemester: Int = 1,
+	val isScoreListLoading: Boolean = false,
 	val scoreList: List<ScoreItem> = emptyList(),
 	val gpaInfo: String? = null,
 	val firstWeekStartDate: String? = null,
@@ -79,6 +84,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	private val PREF_FIRST_WEEK_START_DATE = "first_week_start_date"
 	private val PREF_WEEK_COUNT = "week_count"
 	private val PREF_COURSE_BLOCK_HEIGHT = "course_block_height"
+	private val PREF_HAS_LOGGED_IN_ONCE = "has_logged_in_once"
 	private val UPDATE_HOST = "https://myshsmu.reqwey.xyz"
 	private val UPDATE_JSON_URL = "$UPDATE_HOST/api/update.json"
 
@@ -88,6 +94,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	// Runtime cache for date range
 	private var cachedStart: LocalDate? = null
 	private var cachedEnd: LocalDate? = null
+	private val reLoginMutex = Mutex()
+
+	private class AutoReLoginFailedException(message: String) : Exception(message)
 
 	init {
 		// ViewModel 初始化时配置网络
@@ -136,10 +145,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	private fun checkAutoLogin() {
 		val user = prefs.getString("username", "") ?: ""
 		val pass = prefs.getString("password", "") ?: ""
+		val hasLoggedInOnce = prefs.getBoolean(PREF_HAS_LOGGED_IN_ONCE, false)
 
 		if (user.isNotBlank() && pass.isNotBlank()) {
-			_uiState.value = _uiState.value.copy(savedUsername = user, savedPassword = pass)
-			startLogin(user, pass)
+			_uiState.value = _uiState.value.copy(
+				savedUsername = user,
+				savedPassword = pass,
+				isLoggedIn = hasLoggedInOnce
+			)
+
+			if (hasLoggedInOnce) {
+				onWeekPageChanged(LocalDate.now())
+				fetchScoreData()
+			}
 		}
 	}
 
@@ -158,32 +176,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		_uiState.value = MySHSMUUiState()
 	}
 
-	fun messageShown() {
-		_uiState.value = _uiState.value.copy(userMessage = null)
-	}
-
 	fun startLogin(user: String, pwd: String) {
 		if (user.isBlank() || pwd.isBlank()) {
-			showMessage("错误：请将学号与密码填写完整")
+			updateNotification(NotificationStatus.Failed, "请将学号与密码填写完整")
 			return
 		}
 
 		viewModelScope.launch {
-			_uiState.value = _uiState.value.copy(isLoading = true)
+			_uiState.value = _uiState.value.copy(isLoggingIn = true)
 
 			try {
 				// 读取公钥
 				val pubKey = loadPubKey()
 				if (pubKey == null) {
-					showMessage("错误：无法找到加密公钥")
+					updateNotification(NotificationStatus.Failed, "无法找到加密公钥")
 					return@launch
 				}
-
-				showMessage("尝试通过保存的 Cookie 登录...")
 				if (shsmuService.checkSessionValid()) {
-					showMessage("登录成功")
-					// Even if session is valid, save credentials for future auto-login
+					updateNotification(NotificationStatus.Success, "登录成功")
 					saveCredentials(user, pwd)
+					markFirstLoginSuccess()
 					_uiState.value = _uiState.value.copy(
 						isLoggedIn = true,
 						savedUsername = user,
@@ -192,11 +204,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 					onWeekPageChanged(LocalDate.now())
 					fetchScoreData()
 				} else {
-					showMessage("正在登录...")
+					updateNotification(NotificationStatus.Loading, "正在登录...")
 					val (isSuccessful, message) = shsmuService.autoLogin(user, pwd, pubKey)
 					if (isSuccessful) {
-						showMessage("登录成功")
+						updateNotification(NotificationStatus.Success, "登录成功")
 						saveCredentials(user, pwd)
+						markFirstLoginSuccess()
 
 						_uiState.value = _uiState.value.copy(
 							isLoggedIn = true,
@@ -206,16 +219,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 						onWeekPageChanged(LocalDate.now())
 						fetchScoreData()
 					} else {
-						showMessage(message)
+						updateNotification(NotificationStatus.Failed, message)
 					}
 				}
 			} catch (e: Exception) {
-				showMessage("错误：${e.localizedMessage}")
+				updateNotification(NotificationStatus.Failed, e.localizedMessage)
 				e.printStackTrace()
 			} finally {
-				_uiState.value = _uiState.value.copy(isLoading = false)
+				_uiState.value = _uiState.value.copy(isLoggingIn = false)
 			}
 		}
+	}
+
+	private fun markFirstLoginSuccess() {
+		prefs.edit { putBoolean(PREF_HAS_LOGGED_IN_ONCE, true) }
 	}
 
 	private fun saveCredentials(user: String, pwd: String) {
@@ -252,7 +269,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		viewModelScope.launch {
 			val currentVersionCode = getCurrentVersionCode()
 			_uiState.value = _uiState.value.copy(isCheckingUpdate = true)
-			if (manual) showMessage("正在检查更新...")
+			if (manual) updateNotification(NotificationStatus.Loading, "正在检查更新...")
 
 			try {
 				val request = Request.Builder().url(UPDATE_JSON_URL).get().build()
@@ -260,14 +277,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 					NetworkModule.client.newCall(request).execute().use { response ->
 						if (!response.isSuccessful) {
 							if (manual) {
-								showMessage("检查更新失败：HTTP ${response.code}")
+								updateNotification(
+									NotificationStatus.Failed,
+									"HTTP ${response.code}"
+								)
 							}
 							return@use
 						}
 
 						val body = response.body.string().orEmpty()
 						if (body.isBlank()) {
-							if (manual) showMessage("检查更新失败：响应为空")
+							if (manual) updateNotification(NotificationStatus.Failed, "响应为空")
 							return@use
 						}
 
@@ -279,7 +299,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 								updateInfo = null,
 								showUpdateDialog = false
 							)
-							if (manual) showMessage("当前已是最新版本")
+							if (manual) updateNotification(
+								NotificationStatus.Success,
+								"当前已是最新版本"
+							)
 							return@use
 						}
 
@@ -288,7 +311,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 						)
 
 						if (normalizedDownloadUrl == null) {
-							if (manual) showMessage("检查更新失败：下载地址无效")
+							if (manual) updateNotification(
+								NotificationStatus.Failed,
+								"下载地址无效"
+							)
 							return@use
 						}
 
@@ -305,12 +331,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 							showUpdateDialog = true
 						)
 
-						if (manual) showMessage("发现新版本 v${updateInfo.version}")
+						if (manual) updateNotification(
+							NotificationStatus.Success,
+							"发现新版本 v${updateInfo.version}"
+						)
 					}
 				}
 			} catch (e: Exception) {
 				Log.e("CheckForUpdates", "Network request failed", e)
-				if (manual) showMessage("检查更新失败：${e.localizedMessage ?: "未知错误"}")
+				if (manual) updateNotification(
+					NotificationStatus.Failed,
+					e.localizedMessage ?: "未知错误"
+				)
 			} finally {
 				_uiState.value = _uiState.value.copy(isCheckingUpdate = false)
 			}
@@ -331,7 +363,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 			}
 			getApplication<Application>().startActivity(intent)
 		} catch (e: Exception) {
-			showMessage("无法打开下载链接")
+			updateNotification(NotificationStatus.Failed, "无法打开下载链接: ${e.localizedMessage}")
 		}
 	}
 
@@ -353,18 +385,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		if (!_uiState.value.isLoggedIn) return
 
 		viewModelScope.launch {
-			_uiState.value = _uiState.value.copy(isLoading = true)
+			_uiState.value = _uiState.value.copy(isCourseListLoading = true)
 			try {
 				val startStr = start.format(DateTimeFormatter.ISO_LOCAL_DATE)
 				val endStr = end.format(DateTimeFormatter.ISO_LOCAL_DATE)
-				showMessage("正在加载课程...")
-				val jsonObj = shsmuService.getCurriculum(startStr, endStr)
+				updateNotification(NotificationStatus.Loading, "正在加载课程...")
+				val jsonObj = executeWithAutoReLogin {
+					shsmuService.getCurriculum(startStr, endStr)
+				}
 				mergeAndSaveCurriculumData(jsonObj, start, end)
+				updateNotification(NotificationStatus.Success, "加载成功")
+			} catch (e: AutoReLoginFailedException) {
+				handleSessionExpired(e.localizedMessage)
 			} catch (e: Exception) {
-				showMessage("错误：${e.message}")
+				updateNotification(NotificationStatus.Failed, e.localizedMessage)
 				e.printStackTrace()
 			} finally {
-				_uiState.value = _uiState.value.copy(isLoading = false)
+				_uiState.value = _uiState.value.copy(isCourseListLoading = false)
 			}
 		}
 	}
@@ -373,11 +410,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		viewModelScope.launch {
 			try {
 				_uiState.value = _uiState.value.copy(courseDetail = null)
-				val jsonArr = shsmuService.getCourseDetail(course)
+				val jsonArr = executeWithAutoReLogin {
+					shsmuService.getCourseDetail(course)
+				}
 				_uiState.value =
 					_uiState.value.copy(courseDetail = parseCourseDetailObject(jsonArr))
+			} catch (e: AutoReLoginFailedException) {
+				handleSessionExpired(e.localizedMessage)
 			} catch (e: Exception) {
-				showMessage("错误：${e.message}")
+				updateNotification(NotificationStatus.Failed, e.localizedMessage)
 				e.printStackTrace()
 			}
 		}
@@ -411,12 +452,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		if (!_uiState.value.isLoggedIn) return
 
 		viewModelScope.launch {
-			_uiState.value = _uiState.value.copy(isLoading = true)
+			_uiState.value = _uiState.value.copy(isScoreListLoading = true)
 			try {
 				val targetYear = year ?: _uiState.value.selectedYear ?: "2025-2026"
 				val targetSemester = semester ?: _uiState.value.selectedSemester
 
-				val jsonObj = shsmuService.getScore(targetYear, targetSemester)
+				val jsonObj = executeWithAutoReLogin {
+					shsmuService.getScore(targetYear, targetSemester)
+				}
 
 				// Parse years
 				val yearsArray = jsonObj.optJSONArray("1")
@@ -460,12 +503,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 				if (targetYear.isEmpty() && finalYear.isNotEmpty()) {
 					fetchScoreData(finalYear, targetSemester)
 				}
-
+			} catch (e: AutoReLoginFailedException) {
+				handleSessionExpired(e.localizedMessage)
 			} catch (e: Exception) {
-				showMessage("获取成绩失败：${e.message}")
+				updateNotification(NotificationStatus.Failed, e.localizedMessage)
 				e.printStackTrace()
 			} finally {
-				_uiState.value = _uiState.value.copy(isLoading = false)
+				_uiState.value = _uiState.value.copy(isScoreListLoading = false)
 			}
 		}
 	}
@@ -545,13 +589,61 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 			}
 		} catch (e: Exception) {
 			e.printStackTrace()
-			showMessage("数据存储失败：${e.message}")
+			updateNotification(NotificationStatus.Failed, e.localizedMessage)
 		}
 	}
 
+	private suspend fun <T> executeWithAutoReLogin(block: suspend () -> T): T {
+		return try {
+			block()
+		} catch (e: Exception) {
+			if (!shsmuService.isSessionExpiredError(e)) throw e
 
-	private fun showMessage(msg: String) {
-		_uiState.value = _uiState.value.copy(userMessage = msg)
+			val reLoginSuccess = attemptBackgroundReLogin()
+			if (!reLoginSuccess) {
+				throw AutoReLoginFailedException("登录状态已失效，请重新登录")
+			}
+
+			block()
+		}
+	}
+
+	private suspend fun attemptBackgroundReLogin(): Boolean {
+		return reLoginMutex.withLock {
+			if (shsmuService.checkSessionValid()) {
+				_uiState.value = _uiState.value.copy(isLoggedIn = true)
+				return@withLock true
+			}
+
+			val user = _uiState.value.savedUsername.ifBlank { prefs.getString("username", "") ?: "" }
+			val pass = _uiState.value.savedPassword.ifBlank { prefs.getString("password", "") ?: "" }
+			if (user.isBlank() || pass.isBlank()) return@withLock false
+
+			val pubKey = loadPubKey() ?: return@withLock false
+			val (isSuccessful, _) = shsmuService.autoLogin(user, pass, pubKey)
+			if (isSuccessful) {
+				saveCredentials(user, pass)
+				markFirstLoginSuccess()
+				_uiState.value = _uiState.value.copy(
+					isLoggedIn = true,
+					savedUsername = user,
+					savedPassword = pass
+				)
+			}
+
+			isSuccessful
+		}
+	}
+
+	private fun handleSessionExpired(message: String?) {
+		updateNotification(NotificationStatus.Failed, message ?: "登录状态已失效，请重新登录")
+		_uiState.value = _uiState.value.copy(isLoggedIn = false, courseDetail = null)
+	}
+
+
+	private fun updateNotification(status: NotificationStatus, msg: String) {
+		_uiState.value =
+			_uiState.value.copy(notificationState = GlobalNotificationState(msg, true, status))
 	}
 
 	private fun normalizeDownloadUrl(rawUrl: String): String? {
@@ -570,7 +662,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 			val packageInfo = getApplication<Application>().packageManager
 				.getPackageInfo(getApplication<Application>().packageName, 0)
 			packageInfo.longVersionCode.toInt()
-		} catch (_: Exception) {
+		} catch (_: Throwable) {
 			0
 		}
 	}

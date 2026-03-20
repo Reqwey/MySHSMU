@@ -26,6 +26,10 @@ class ShsmuService(
 	private val loginUrl: String,
 	private val homeUrl: String
 ) {
+	companion object {
+		private const val SESSION_EXPIRED_ERROR = "SESSION_EXPIRED"
+	}
+
 	suspend fun buildLoginForm(doc: Document, username: String, password: String): Pair<String, FormBody>? {
 		try {
 			// 提取表单信息
@@ -158,6 +162,16 @@ class ShsmuService(
 		return !content.contains("login_box")
 	}
 
+	fun isSessionExpiredError(e: Throwable): Boolean {
+		return e.message == SESSION_EXPIRED_ERROR
+	}
+
+	private fun throwIfSessionExpired(content: String) {
+		if (!checkLoginSuccess(content)) {
+			throw IllegalStateException(SESSION_EXPIRED_ERROR)
+		}
+	}
+
 	private fun downloadImage(url: String): Bitmap? {
 		val req = Request.Builder().url(url).get().build()
 		return try {
@@ -196,6 +210,7 @@ class ShsmuService(
 					if (resp.isSuccessful) {
 						val body = resp.body.string()
 						Log.d("Curriculum", "Response Body: $body")
+						throwIfSessionExpired(body)
 						if (body.isBlank()) {
 							throw Exception("Response body is empty")
 						}
@@ -238,6 +253,7 @@ class ShsmuService(
 					if (resp.isSuccessful) {
 						val body = resp.body.string()
 						Log.d("CourseDetail", "Response Body: $body")
+						throwIfSessionExpired(body)
 						if (body.isBlank()) {
 							throw Exception("Response body is empty")
 						}
@@ -273,6 +289,7 @@ class ShsmuService(
 					if (resp.isSuccessful) {
 						val body = resp.body.string()
 						Log.d("Score", "Response Body: $body")
+						throwIfSessionExpired(body)
 						if (body.isBlank()) {
 							throw Exception("Response body is empty")
 						}

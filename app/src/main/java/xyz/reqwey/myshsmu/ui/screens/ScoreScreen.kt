@@ -48,154 +48,171 @@ fun ScoreScreen(
 				.fillMaxSize()
 				.padding(horizontal = 16.dp)
 		) {
-		// Dropdowns Row
-		Row(
-			modifier = Modifier.fillMaxWidth(),
-			horizontalArrangement = Arrangement.spacedBy(8.dp)
-		) {
-			// Year Selector
-			var yearExpanded by remember { mutableStateOf(false) }
-			ExposedDropdownMenuBox(
-				expanded = yearExpanded,
-				onExpandedChange = { yearExpanded = !yearExpanded },
-				modifier = Modifier.weight(1f)
+			// Dropdowns Row
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.spacedBy(8.dp)
 			) {
-				OutlinedTextField(
-					value = uiState.selectedYear ?: "选择学年",
-					onValueChange = {},
-					readOnly = true,
-					label = { Text("学年") },
-					trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = yearExpanded) },
-					modifier = Modifier.menuAnchor(type = MenuAnchorType.PrimaryEditable, enabled = true)
-				)
-				ExposedDropdownMenu(
+				// Year Selector
+				var yearExpanded by remember { mutableStateOf(false) }
+				ExposedDropdownMenuBox(
 					expanded = yearExpanded,
-					onDismissRequest = { yearExpanded = false }
+					onExpandedChange = { yearExpanded = !yearExpanded },
+					modifier = Modifier.weight(1f)
 				) {
-					uiState.scoreYears.forEach { year ->
-						DropdownMenuItem(
-							text = { Text(year) },
-							onClick = {
-								onYearSelected(year)
-								yearExpanded = false
-							}
+					OutlinedTextField(
+						value = uiState.selectedYear ?: "选择学年",
+						onValueChange = {},
+						readOnly = true,
+						label = { Text("学年") },
+						trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = yearExpanded) },
+						modifier = Modifier.menuAnchor(
+							type = MenuAnchorType.PrimaryEditable,
+							enabled = true
 						)
+					)
+					ExposedDropdownMenu(
+						expanded = yearExpanded,
+						onDismissRequest = { yearExpanded = false }
+					) {
+						uiState.scoreYears.forEach { year ->
+							DropdownMenuItem(
+								text = { Text(year) },
+								onClick = {
+									onYearSelected(year)
+									yearExpanded = false
+								}
+							)
+						}
 					}
 				}
-			}
 
-			// Semester Selector
-			var semesterExpanded by remember { mutableStateOf(false) }
-			val semesters = listOf(1, 2)
-			ExposedDropdownMenuBox(
-				expanded = semesterExpanded,
-				onExpandedChange = { semesterExpanded = !semesterExpanded },
-				modifier = Modifier.weight(1f)
-			) {
-				OutlinedTextField(
-					value = "第 ${uiState.selectedSemester} 学期",
-					onValueChange = {},
-					readOnly = true,
-					label = { Text("学期") },
-					trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = semesterExpanded) },
-					modifier = Modifier.menuAnchor(type = MenuAnchorType.PrimaryEditable, enabled = true)
-				)
-				ExposedDropdownMenu(
+				// Semester Selector
+				var semesterExpanded by remember { mutableStateOf(false) }
+				val semesters = listOf(1, 2)
+				ExposedDropdownMenuBox(
 					expanded = semesterExpanded,
-					onDismissRequest = { semesterExpanded = false }
+					onExpandedChange = { semesterExpanded = !semesterExpanded },
+					modifier = Modifier.weight(1f)
 				) {
-					semesters.forEach { sem ->
-						DropdownMenuItem(
-							text = { Text("第 $sem 学期") },
-							onClick = {
-								onSemesterSelected(sem)
-								semesterExpanded = false
-							}
+					OutlinedTextField(
+						value = "第 ${uiState.selectedSemester} 学期",
+						onValueChange = {},
+						readOnly = true,
+						label = { Text("学期") },
+						trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = semesterExpanded) },
+						modifier = Modifier.menuAnchor(
+							type = MenuAnchorType.PrimaryEditable,
+							enabled = true
 						)
+					)
+					ExposedDropdownMenu(
+						expanded = semesterExpanded,
+						onDismissRequest = { semesterExpanded = false }
+					) {
+						semesters.forEach { sem ->
+							DropdownMenuItem(
+								text = { Text("第 $sem 学期") },
+								onClick = {
+									onSemesterSelected(sem)
+									semesterExpanded = false
+								}
+							)
+						}
 					}
+				}
+			}
+
+			Spacer(modifier = Modifier.height(16.dp))
+
+			// GPA Info
+			uiState.gpaInfo?.let {
+				Text(
+					text = it,
+					style = MaterialTheme.typography.bodySmall,
+					fontWeight = FontWeight.Bold,
+					modifier = Modifier.padding(bottom = 8.dp)
+				)
+			}
+
+			// Table Header
+			Row(
+				modifier = Modifier
+					.fillMaxWidth()
+					.padding(vertical = 8.dp),
+				horizontalArrangement = Arrangement.SpaceBetween,
+			) {
+				Column(
+					modifier = Modifier.weight(3f),
+				) {
+					Text(
+						"课程",
+						fontWeight = FontWeight.Bold,
+						color = MaterialTheme.colorScheme.primary,
+						style = MaterialTheme.typography.bodySmall
+					)
+				}
+				Column(
+					modifier = Modifier.weight(1f),
+					horizontalAlignment = Alignment.CenterHorizontally
+				) {
+					Text(
+						"学分",
+						fontWeight = FontWeight.Bold,
+						color = MaterialTheme.colorScheme.primary,
+						style = MaterialTheme.typography.bodySmall
+					)
+				}
+				Column(
+					modifier = Modifier.weight(1.5f),
+					horizontalAlignment = Alignment.CenterHorizontally
+				) {
+					Text(
+						"分数",
+						fontWeight = FontWeight.Bold,
+						color = MaterialTheme.colorScheme.primary,
+						style = MaterialTheme.typography.bodySmall
+					)
+				}
+				Column(
+					modifier = Modifier.weight(1f),
+					horizontalAlignment = Alignment.CenterHorizontally
+				) {
+					Text(
+						"评级",
+						fontWeight = FontWeight.Bold,
+						color = MaterialTheme.colorScheme.primary,
+						style = MaterialTheme.typography.bodySmall
+					)
+				}
+			}
+			HorizontalDivider()
+
+			// Score List
+			LazyColumn(
+				modifier = Modifier.fillMaxSize(),
+				horizontalAlignment = Alignment.CenterHorizontally
+			) {
+				items(uiState.scoreList) { score ->
+					ScoreRow(score)
+					HorizontalDivider(
+						modifier = Modifier.padding(horizontal = 4.dp),
+						thickness = 0.5.dp
+					)
 				}
 			}
 		}
 
-		Spacer(modifier = Modifier.height(16.dp))
-
-		// GPA Info
-		uiState.gpaInfo?.let {
-			Text(
-				text = it,
-				style = MaterialTheme.typography.bodySmall,
-				fontWeight = FontWeight.Bold,
-				modifier = Modifier.padding(bottom = 8.dp)
-			)
-		}
-
-		// Table Header
-		Row(
-			modifier = Modifier
-				.fillMaxWidth()
-				.padding(vertical = 8.dp),
-			horizontalArrangement = Arrangement.SpaceBetween,
-		) {
-			Column(
-				modifier = Modifier.weight(3f),
+		if (uiState.isScoreListLoading) {
+			Box(
+				modifier = Modifier
+					.fillMaxSize()
+					.background(Color.Black.copy(alpha = 0.3f)),
+				contentAlignment = Alignment.Center
 			) {
-				Text(
-					"课程", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
-					style = MaterialTheme.typography.bodySmall
-				)
-			}
-			Column(
-				modifier = Modifier.weight(1f),
-				horizontalAlignment = Alignment.CenterHorizontally
-			) {
-				Text(
-					"学分", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
-					style = MaterialTheme.typography.bodySmall
-				)
-			}
-			Column(
-				modifier = Modifier.weight(1.5f),
-				horizontalAlignment = Alignment.CenterHorizontally
-			) {
-				Text(
-					"分数", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
-					style = MaterialTheme.typography.bodySmall
-				)
-			}
-			Column(
-				modifier = Modifier.weight(1f),
-				horizontalAlignment = Alignment.CenterHorizontally
-			) {
-				Text(
-					"评级", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
-					style = MaterialTheme.typography.bodySmall
-				)
+				CircularProgressIndicator()
 			}
 		}
-		HorizontalDivider()
-
-		// Score List
-		LazyColumn(
-			modifier = Modifier.fillMaxSize(),
-			horizontalAlignment = Alignment.CenterHorizontally
-		) {
-			items(uiState.scoreList) { score ->
-				ScoreRow(score)
-				HorizontalDivider(modifier = Modifier.padding(horizontal = 4.dp), thickness = 0.5.dp)
-			}
-		}
-	}
-
-	if (uiState.isLoading) {
-		Box(
-			modifier = Modifier
-				.fillMaxSize()
-				.background(Color.Black.copy(alpha = 0.3f)),
-			contentAlignment = Alignment.Center
-		) {
-			CircularProgressIndicator()
-		}
-	}
 	}
 }
 

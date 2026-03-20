@@ -330,18 +330,26 @@ fun SettingsScreen(
 
 				FilledTonalButton(
 					onClick = onRefresh,
+					enabled = !uiState.isCourseListLoading,
 					modifier = Modifier
 						.fillMaxWidth()
 				) {
-					Icon(
-						imageVector = Icons.Default.Refresh,
-						contentDescription = "Refresh",
-						modifier = Modifier.size(16.dp)
-					)
+					if (uiState.isCourseListLoading) {
+						CircularProgressIndicator(
+							modifier = Modifier.size(16.dp),
+							strokeWidth = 2.dp
+						)
+					} else {
+						Icon(
+							imageVector = Icons.Default.Refresh,
+							contentDescription = "Refresh",
+							modifier = Modifier.size(16.dp)
+						)
+					}
 
 					Spacer(modifier = Modifier.width(8.dp))
 
-					Text("更新课程信息")
+					Text(if (uiState.isCourseListLoading) "正在刷新..." else "刷新课程信息")
 				}
 			}
 		}
