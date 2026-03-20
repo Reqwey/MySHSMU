@@ -23,6 +23,7 @@ import xyz.reqwey.myshsmu.model.ScoreItem
 import xyz.reqwey.myshsmu.network.NetworkModule
 import xyz.reqwey.myshsmu.service.ShsmuService
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import xyz.reqwey.myshsmu.utils.CurriculumUtils
 import androidx.glance.appwidget.updateAll
@@ -30,6 +31,7 @@ import xyz.reqwey.myshsmu.widget.CurriculumWidget
 import androidx.core.net.toUri
 import xyz.reqwey.myshsmu.model.GlobalNotificationState
 import xyz.reqwey.myshsmu.ui.components.NotificationStatus
+import xyz.reqwey.myshsmu.utils.optCleanString
 
 data class AppUpdateInfo(
 	val version: String,
@@ -37,6 +39,22 @@ data class AppUpdateInfo(
 	val downloadUrl: String,
 	val updateLog: String,
 	val forceUpdate: Boolean
+)
+
+data class ClassroomOption(
+	val code: String,
+	val name: String
+)
+
+data class ClassroomScheduleItem(
+	val guid: String,
+	val courseName: String,
+	val className: String,
+	val content: String,
+	val teacher: String,
+	val beginTime: LocalTime,
+	val endTime: LocalTime,
+	val category: String
 )
 
 // UI 状态数据类
@@ -59,6 +77,18 @@ data class MySHSMUUiState(
 	val firstWeekStartDate: String? = null,
 	val weekCount: Int = 0,
 	val courseBlockHeight: Int = 60,
+	val isClassroomOptionsLoading: Boolean = false,
+	val isClassroomScheduleLoading: Boolean = false,
+	val classroomCampusOptions: List<ClassroomOption> = emptyList(),
+	val classroomBuildingOptions: List<ClassroomOption> = emptyList(),
+	val classroomFloorOptions: List<ClassroomOption> = emptyList(),
+	val classroomRoomOptions: List<ClassroomOption> = emptyList(),
+	val selectedCampusCode: String? = null,
+	val selectedBuildingCode: String? = null,
+	val selectedFloorCode: String? = null,
+	val selectedClassroomCode: String? = null,
+	val classroomSelectedDate: String = LocalDate.now().toString(),
+	val classroomScheduleList: List<ClassroomScheduleItem> = emptyList(),
 	val isCheckingUpdate: Boolean = false,
 	val updateInfo: AppUpdateInfo? = null,
 	val showUpdateDialog: Boolean = false
@@ -71,12 +101,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	val uiState = _uiState.asStateFlow()
 
 	// 常量
-	private val BASE_URL =
-		"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421f1e25594757e7b586d059ce29d51367b0014/cas/"
-	private val LOGIN_URL =
-		"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421f1e25594757e7b586d059ce29d51367b0014/cas/login?service=https%3a%2f%2fjwstu.shsmu.edu.cn%2fLogin%2fauthLogin"
-	private val HOME_URL =
-		"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421fae05288327e7b586d059ce29d51367b9aac/"
 	private val PREF_NAME = "auth_prefs"
 	private val PREF_CURRICULUM_RANGE_START = "curriculum_range_start"
 	private val PREF_CURRICULUM_RANGE_END = "curriculum_range_end"
@@ -101,13 +125,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 	init {
 		// ViewModel 初始化时配置网络
 		NetworkModule.init(application.applicationContext)
-		shsmuService = ShsmuService(
-			NetworkModule.client,
-			NetworkModule.cookieJar,
-			BASE_URL,
-			LOGIN_URL,
-			HOME_URL
-		)
+		shsmuService = ShsmuService(NetworkModule.client, NetworkModule.cookieJar)
 
 		loadPersistentData()
 
@@ -223,7 +241,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 					}
 				}
 			} catch (e: Exception) {
-				updateNotification(NotificationStatus.Failed, e.localizedMessage)
+				updateNotification(NotificationStatus.Failed, e.localizedMessage ?: "未知错误")
 				e.printStackTrace()
 			} finally {
 				_uiState.value = _uiState.value.copy(isLoggingIn = false)
@@ -263,6 +281,273 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 		fetchScoreData()
 	}
 
+	fun ensureClassroomOptionsLoaded() {
+		if (!_uiState.value.isLoggedIn) return
+		if (_uiState.value.classroomCampusOptions.isNotEmpty()) return
+
+		viewModelScope.launch {
+			_uiState.value = _uiState.value.copy(isClassroomOptionsLoading = true)
+			try {
+				val campusOptions = executeWithAutoReLogin {
+					shsmuService.getClassroomInfoMap(
+						type = "AnswerAuxiliaryCampus",
+						area = null,
+						buildCode = null,
+						floorNo = null
+					)
+				}.parseClassroomOptions()
+				_uiState.value = _uiState.value.copy(
+					classroomCampusOptions = campusOptions,
+					selectedCampusCode = null,
+					classroomBuildingOptions = emptyList(),
+					classroomFloorOptions = emptyList(),
+					classroomRoomOptions = emptyList(),
+					selectedBuildingCode = null,
+					selectedFloorCode = null,
+					selectedClassroomCode = null,
+					classroomScheduleList = emptyList()
+				)
+			} catch (e: AutoReLoginFailedException) {
+				handleSessionExpired(e.localizedMessage)
+			} catch (e: Exception) {
+				updateNotification(NotificationStatus.Failed, e.localizedMessage ?: "教室信息加载失败")
+			} finally {
+				_uiState.value = _uiState.value.copy(isClassroomOptionsLoading = false)
+			}
+		}
+	}
+
+	fun onCampusSelected(campusCode: String) {
+		if (!_uiState.value.isLoggedIn) return
+		if (_uiState.value.selectedCampusCode == campusCode) return
+
+		_uiState.value = _uiState.value.copy(
+			selectedCampusCode = campusCode,
+			classroomBuildingOptions = emptyList(),
+			classroomFloorOptions = emptyList(),
+			classroomRoomOptions = emptyList(),
+			selectedBuildingCode = null,
+			selectedFloorCode = null,
+			selectedClassroomCode = null,
+			classroomScheduleList = emptyList()
+		)
+		loadBuildingOptions(campusCode)
+	}
+
+	fun onBuildingSelected(buildingCode: String) {
+		if (!_uiState.value.isLoggedIn) return
+		if (_uiState.value.selectedBuildingCode == buildingCode) return
+
+		_uiState.value = _uiState.value.copy(
+			selectedBuildingCode = buildingCode,
+			classroomFloorOptions = emptyList(),
+			classroomRoomOptions = emptyList(),
+			selectedFloorCode = null,
+			selectedClassroomCode = null,
+			classroomScheduleList = emptyList()
+		)
+
+		val area = _uiState.value.selectedCampusCode ?: return
+		loadFloorOptions(area = area, buildCode = buildingCode)
+	}
+
+	fun onFloorSelected(floorCode: String) {
+		if (!_uiState.value.isLoggedIn) return
+		if (_uiState.value.selectedFloorCode == floorCode) return
+
+		_uiState.value = _uiState.value.copy(
+			selectedFloorCode = floorCode,
+			classroomRoomOptions = emptyList(),
+			selectedClassroomCode = null,
+			classroomScheduleList = emptyList()
+		)
+
+		val area = _uiState.value.selectedCampusCode ?: return
+		val buildingCode = _uiState.value.selectedBuildingCode ?: return
+		loadClassroomOptions(area = area, buildCode = buildingCode, floorNo = floorCode)
+	}
+
+	fun onClassroomSelected(classroomCode: String) {
+		if (!_uiState.value.isLoggedIn) return
+		_uiState.value = _uiState.value.copy(
+			selectedClassroomCode = classroomCode,
+			classroomScheduleList = emptyList()
+		)
+
+		val date = runCatching { LocalDate.parse(_uiState.value.classroomSelectedDate) }
+			.getOrElse { LocalDate.now() }
+		fetchClassroomSchedule(date)
+	}
+
+	fun fetchClassroomSchedule(date: LocalDate) {
+		if (!_uiState.value.isLoggedIn) return
+
+		val area = _uiState.value.selectedCampusCode ?: return
+		val buildCode = _uiState.value.selectedBuildingCode ?: return
+		val floorNo = _uiState.value.selectedFloorCode ?: return
+		val classroomId = _uiState.value.selectedClassroomCode ?: return
+
+		viewModelScope.launch {
+			_uiState.value = _uiState.value.copy(
+				isClassroomScheduleLoading = true,
+				classroomSelectedDate = date.toString(),
+				classroomScheduleList = emptyList()
+			)
+			try {
+				val resp = executeWithAutoReLogin {
+					shsmuService.getClassroomInfoDetail(
+						date = date.format(DateTimeFormatter.ISO_LOCAL_DATE),
+						area = area,
+						buildCode = buildCode,
+						floorNo = floorNo,
+						classroomId = classroomId
+					)
+				}
+
+				_uiState.value = _uiState.value.copy(
+					classroomScheduleList = parseClassroomSchedule(resp)
+				)
+			} catch (e: AutoReLoginFailedException) {
+				handleSessionExpired(e.localizedMessage)
+			} catch (e: Exception) {
+				updateNotification(NotificationStatus.Failed, e.localizedMessage ?: "教室占用信息加载失败")
+			} finally {
+				_uiState.value = _uiState.value.copy(isClassroomScheduleLoading = false)
+			}
+		}
+	}
+
+	private fun loadBuildingOptions(campusCode: String) {
+		viewModelScope.launch {
+			_uiState.value = _uiState.value.copy(isClassroomOptionsLoading = true)
+			try {
+				val options = executeWithAutoReLogin {
+					shsmuService.getClassroomInfoMap(
+						type = "BuildCode",
+						area = campusCode,
+						buildCode = null,
+						floorNo = null
+					)
+				}.parseClassroomOptions()
+				_uiState.value = _uiState.value.copy(
+					classroomBuildingOptions = options,
+					selectedBuildingCode = null,
+					classroomFloorOptions = emptyList(),
+					classroomRoomOptions = emptyList(),
+					selectedFloorCode = null,
+					selectedClassroomCode = null,
+					classroomScheduleList = emptyList()
+				)
+			} catch (e: AutoReLoginFailedException) {
+				handleSessionExpired(e.localizedMessage)
+			} catch (e: Exception) {
+				updateNotification(NotificationStatus.Failed, e.localizedMessage ?: "楼栋信息加载失败")
+			} finally {
+				_uiState.value = _uiState.value.copy(isClassroomOptionsLoading = false)
+			}
+		}
+	}
+
+	private fun loadFloorOptions(area: String, buildCode: String) {
+		viewModelScope.launch {
+			_uiState.value = _uiState.value.copy(isClassroomOptionsLoading = true)
+			try {
+				val options = executeWithAutoReLogin {
+					shsmuService.getClassroomInfoMap(
+						type = "ClassroomFloor",
+						area = area,
+						buildCode = buildCode,
+						floorNo = null
+					)
+				}.parseClassroomOptions()
+				_uiState.value = _uiState.value.copy(
+					classroomFloorOptions = options,
+					selectedFloorCode = null,
+					classroomRoomOptions = emptyList(),
+					selectedClassroomCode = null,
+					classroomScheduleList = emptyList()
+				)
+			} catch (e: AutoReLoginFailedException) {
+				handleSessionExpired(e.localizedMessage)
+			} catch (e: Exception) {
+				updateNotification(NotificationStatus.Failed, e.localizedMessage ?: "楼层信息加载失败")
+			} finally {
+				_uiState.value = _uiState.value.copy(isClassroomOptionsLoading = false)
+			}
+		}
+	}
+
+	private fun loadClassroomOptions(area: String, buildCode: String, floorNo: String) {
+		viewModelScope.launch {
+			_uiState.value = _uiState.value.copy(isClassroomOptionsLoading = true)
+			try {
+				val options = executeWithAutoReLogin {
+					shsmuService.getClassroomInfoMap(
+						type = "Classroom",
+						area = area,
+						buildCode = buildCode,
+						floorNo = floorNo
+					)
+				}.parseClassroomOptions()
+				_uiState.value = _uiState.value.copy(
+					classroomRoomOptions = options,
+					selectedClassroomCode = null,
+					classroomScheduleList = emptyList()
+				)
+			} catch (e: AutoReLoginFailedException) {
+				handleSessionExpired(e.localizedMessage)
+			} catch (e: Exception) {
+				updateNotification(NotificationStatus.Failed, e.localizedMessage ?: "教室列表加载失败")
+			} finally {
+				_uiState.value = _uiState.value.copy(isClassroomOptionsLoading = false)
+			}
+		}
+	}
+
+	private fun JSONObject.parseClassroomOptions(): List<ClassroomOption> {
+		val result = mutableListOf<ClassroomOption>()
+		val data = optJSONArray("data") ?: return result
+		for (i in 0 until data.length()) {
+			val item = data.optJSONObject(i) ?: continue
+			val code = item.optCleanString("code").trim()
+			if (code.isBlank()) continue
+			val name = item.optCleanString("name", code).trim().ifBlank { code }
+			result.add(ClassroomOption(code = code, name = name))
+		}
+		return result
+	}
+
+	private fun parseClassroomSchedule(resp: JSONObject): List<ClassroomScheduleItem> {
+		val data = resp.optJSONArray("data") ?: return emptyList()
+		val parsed = mutableListOf<ClassroomScheduleItem>()
+		for (i in 0 until data.length()) {
+			val item = data.optJSONObject(i) ?: continue
+			val beginRaw = item.optCleanString("periodbegintime")
+			val endRaw = item.optCleanString("periodendtime")
+			val begin = runCatching { LocalTime.parse(beginRaw) }.getOrNull() ?: continue
+			val end = runCatching { LocalTime.parse(endRaw) }.getOrNull() ?: continue
+			if (!end.isAfter(begin)) continue
+
+			parsed.add(
+				ClassroomScheduleItem(
+					guid = item.optCleanString("guid", "$i"),
+					courseName = item.optCleanString("coursename", "未知课程"),
+					className = item.optCleanString("classname"),
+					content = item.optCleanString("tcContent"),
+					teacher = item.optCleanString(
+						"teachertitle",
+						item.optCleanString("teachername")
+					),
+					beginTime = begin,
+					endTime = end,
+					category = item.optCleanString("ctypeId2")
+				)
+			)
+		}
+
+		return parsed.sortedBy { it.beginTime }
+	}
+
 	fun checkForUpdates(manual: Boolean = false) {
 		if (_uiState.value.isCheckingUpdate) return
 
@@ -292,6 +577,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 						}
 
 						val updateJson = JSONObject(body)
+
 						val remoteVersionCode = updateJson.optInt("versionCode", -1)
 
 						if (remoteVersionCode <= currentVersionCode) {
@@ -307,7 +593,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 						}
 
 						val normalizedDownloadUrl = normalizeDownloadUrl(
-							updateJson.optString("downloadUrl", "")
+							updateJson.optCleanString("downloadUrl")
 						)
 
 						if (normalizedDownloadUrl == null) {
@@ -319,10 +605,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 						}
 
 						val updateInfo = AppUpdateInfo(
-							version = updateJson.optString("version", remoteVersionCode.toString()),
+							version = updateJson.optCleanString("version", remoteVersionCode.toString()),
 							versionCode = remoteVersionCode,
 							downloadUrl = normalizedDownloadUrl,
-							updateLog = updateJson.optString("updateLog", ""),
+							updateLog = updateJson.optCleanString("updateLog"),
 							forceUpdate = updateJson.optBoolean("forceUpdate", false)
 						)
 
@@ -398,7 +684,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 			} catch (e: AutoReLoginFailedException) {
 				handleSessionExpired(e.localizedMessage)
 			} catch (e: Exception) {
-				updateNotification(NotificationStatus.Failed, e.localizedMessage)
+				updateNotification(NotificationStatus.Failed, e.localizedMessage ?: "未知错误")
 				e.printStackTrace()
 			} finally {
 				_uiState.value = _uiState.value.copy(isCourseListLoading = false)
@@ -418,7 +704,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 			} catch (e: AutoReLoginFailedException) {
 				handleSessionExpired(e.localizedMessage)
 			} catch (e: Exception) {
-				updateNotification(NotificationStatus.Failed, e.localizedMessage)
+				updateNotification(NotificationStatus.Failed, e.localizedMessage ?: "未知错误")
 				e.printStackTrace()
 			}
 		}
@@ -429,17 +715,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 			val detailObj = obj.optJSONObject(0)
 			if (detailObj != null) {
 				return CourseDetail(
-					name = detailObj.optString("CourseName", ""),
-					college = detailObj.optString("College", ""),
-					teacher = "${detailObj.optString("Teacher", "")} ${
-						detailObj.optString(
+					name = detailObj.optCleanString("CourseName"),
+					college = detailObj.optCleanString("College"),
+					teacher = "${detailObj.optCleanString("Teacher")} ${
+						detailObj.optCleanString(
 							"Title",
 							""
 						)
 					}",
-					content = detailObj.optString("Content", ""),
-					classes = detailObj.optString("ClassCode", ""),
-					location = detailObj.optString("Classroom_Name", "")
+					content = detailObj.optCleanString("Content"),
+					classes = detailObj.optCleanString("ClassCode"),
+					location = detailObj.optCleanString("Classroom_Name")
 				)
 			}
 		} catch (e: Exception) {
@@ -486,7 +772,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 					}
 				}
 
-				val gpaInfo = jsonObj.optString("4", "")
+				val gpaInfo = jsonObj.optCleanString("4")
 
 				val finalYear =
 					if (targetYear.isEmpty() && years.isNotEmpty()) years.last() else targetYear
@@ -506,7 +792,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 			} catch (e: AutoReLoginFailedException) {
 				handleSessionExpired(e.localizedMessage)
 			} catch (e: Exception) {
-				updateNotification(NotificationStatus.Failed, e.localizedMessage)
+				updateNotification(NotificationStatus.Failed, e.localizedMessage ?: "未知错误")
 				e.printStackTrace()
 			} finally {
 				_uiState.value = _uiState.value.copy(isScoreListLoading = false)
@@ -516,12 +802,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
 	private fun parseScoreObject(obj: JSONObject): ScoreItem {
 		return ScoreItem(
-			courseName = obj.optString("CurriculumName", "Unknown"),
+			courseName = obj.optCleanString("CurriculumName", "Unknown"),
 			score = obj.optDouble("Score", 0.0),
 			fScore = obj.optDouble("FScore", 0.0),
-			achievementGrade = obj.optString("AchievementGrade", ""),
+			achievementGrade = obj.optCleanString("AchievementGrade"),
 			credit = obj.optDouble("Credit", 0.0),
-			examSituation = obj.optString("ExaminationSituationStr", ""),
+			examSituation = obj.optCleanString("ExaminationSituationStr"),
 			semester = obj.optInt("Semester", 0)
 		)
 	}
@@ -589,7 +875,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 			}
 		} catch (e: Exception) {
 			e.printStackTrace()
-			updateNotification(NotificationStatus.Failed, e.localizedMessage)
+			updateNotification(NotificationStatus.Failed, e.localizedMessage ?: "未知错误")
 		}
 	}
 
@@ -615,8 +901,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 				return@withLock true
 			}
 
-			val user = _uiState.value.savedUsername.ifBlank { prefs.getString("username", "") ?: "" }
-			val pass = _uiState.value.savedPassword.ifBlank { prefs.getString("password", "") ?: "" }
+			val user =
+				_uiState.value.savedUsername.ifBlank { prefs.getString("username", "") ?: "" }
+			val pass =
+				_uiState.value.savedPassword.ifBlank { prefs.getString("password", "") ?: "" }
 			if (user.isBlank() || pass.isBlank()) return@withLock false
 
 			val pubKey = loadPubKey() ?: return@withLock false

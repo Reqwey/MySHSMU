@@ -21,7 +21,11 @@ fun MainScreen(uiState: MySHSMUUiState, viewModel: MainViewModel) {
 
 	val navItems = listOf(
 		NavItem("课程", R.drawable.calendar_today_24px, R.drawable.calendar_today_24px_filled),
-		NavItem("教室", R.drawable.school_24px, R.drawable.school_24px_filled),
+		NavItem(
+			"教室",
+			R.drawable.person_raised_hand_24px,
+			R.drawable.person_raised_hand_24px_filled
+		),
 		NavItem("成绩", R.drawable.kid_star_24px, R.drawable.kid_star_24px_filled),
 		NavItem("设置", R.drawable.settings_24px, R.drawable.settings_24px_filled)
 	)
@@ -51,10 +55,14 @@ fun MainScreen(uiState: MySHSMUUiState, viewModel: MainViewModel) {
 				onCourseSelected = { course -> viewModel.onCourseSelected(course) }
 			)
 
-			1 -> CurriculumScreen(
+			1 -> ClassroomScreen(
 				uiState = uiState,
-				onPageChanged = { date -> viewModel.onWeekPageChanged(date) },
-				onCourseSelected = { course -> viewModel.onCourseSelected(course) }
+				onInit = { viewModel.ensureClassroomOptionsLoaded() },
+				onCampusSelected = { viewModel.onCampusSelected(it) },
+				onBuildingSelected = { viewModel.onBuildingSelected(it) },
+				onFloorSelected = { viewModel.onFloorSelected(it) },
+				onClassroomSelected = { viewModel.onClassroomSelected(it) },
+				onDateChanged = { viewModel.fetchClassroomSchedule(it) }
 			)
 
 			2 -> ScoreScreen(

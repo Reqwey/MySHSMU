@@ -24,17 +24,17 @@ object CurriculumUtils {
 
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
-                val title = obj.optString("Curriculum", "Unknown")
-                val type = obj.optString("CurriculumType", "Unknown")
+                val title = obj.optCleanString("Curriculum", "Unknown")
+                val type = obj.optCleanString("CurriculumType", "Unknown")
                 val count = obj.optInt("CourseCount", 0)
-                val classroom = obj.optString("Classroom", "Unknown").replace("&nbsp;", "")
-                val startStr = obj.optString("Start")
-                val endStr = obj.optString("End")
+                val classroom = obj.optCleanString("Classroom", "Unknown").replace("&nbsp;", "")
+                val startStr = obj.optCleanString("Start")
+                val endStr = obj.optCleanString("End")
                 val ids = CourseItemIds(
-                    mcsId = obj.optString("MCSID", ""),
+                    mcsId = obj.optCleanString("MCSID"),
                     csId = obj.optInt("CSID", 0),
                     curriculumId = obj.optInt("CurriculumID", 0),
-                    xxkmId = obj.optString("XXKMID", "")
+                    xxkmId = obj.optCleanString("XXKMID")
                 )
 
                 if (startStr.isNotEmpty() && endStr.isNotEmpty()) {

@@ -22,22 +22,31 @@ import xyz.reqwey.myshsmu.utils.RsaCrypto
 class ShsmuService(
 	private val client: OkHttpClient,
 	private val cookieJar: PersistentCookieJar,
-	private val baseUrl: String,
-	private val loginUrl: String,
-	private val homeUrl: String
 ) {
 	companion object {
 		private const val SESSION_EXPIRED_ERROR = "SESSION_EXPIRED"
+		private const val BASE_URL =
+			"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421f1e25594757e7b586d059ce29d51367b0014/cas/"
+		private const val LOGIN_URL =
+			"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421f1e25594757e7b586d059ce29d51367b0014/cas/login?service=https%3a%2f%2fjwstu.shsmu.edu.cn%2fLogin%2fauthLogin"
+		private const val HOME_URL =
+			"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421fae05288327e7b586d059ce29d51367b9aac/"
+		private const val JFZX_URL =
+			"https://webvpn2.shsmu.edu.cn/https/77726476706e69737468656265737421faf15b8469236043731dc7a99c406d362c/"
 	}
 
-	suspend fun buildLoginForm(doc: Document, username: String, password: String): Pair<String, FormBody>? {
+	suspend fun buildLoginForm(
+		doc: Document,
+		username: String,
+		password: String
+	): Pair<String, FormBody>? {
 		try {
 			// 提取表单信息
 			val form = doc.selectFirst("form") ?: error("没有找到登录表单")
 
 			// 提取 Action URL
 			val action = form.attr("abs:action")
-			val submitUrl = action.ifEmpty { loginUrl }
+			val submitUrl = action.ifEmpty { LOGIN_URL }
 
 			// 提取所有输入字段 (包含隐藏字段)
 			val inputFields = mutableMapOf<String, String>()
@@ -52,7 +61,7 @@ class ShsmuService(
 
 			// 查找并下载验证码
 			val captchaImg = doc.selectFirst("img[src*=captcha]")
-			val captchaUrl = captchaImg?.attr("abs:src") ?: "$baseUrl/captcha.jpg?vpn-1"
+			val captchaUrl = captchaImg?.attr("abs:src") ?: "$BASE_URL/captcha.jpg?vpn-1"
 			Log.i("Login", "Downloading captcha from: $captchaUrl")
 
 			val captchaBitmap = downloadImage(captchaUrl) ?: error("下载验证图片失败")
@@ -78,14 +87,19 @@ class ShsmuService(
 			return null
 		}
 	}
+
 	/**
 	 * 全自动登录 (挂起函数，直接在 CoroutineScope 中调用)
 	 */
-	suspend fun autoLogin(username: String, password: String, publicKeyPem: String): Pair<Boolean, String> {
+	suspend fun autoLogin(
+		username: String,
+		password: String,
+		publicKeyPem: String
+	): Pair<Boolean, String> {
 		return withContext(Dispatchers.IO) {
 			try {
 				val encryptedPwd = RsaCrypto.encryptPassword(password, publicKeyPem)
-				var curLoginUrl = loginUrl
+				var curLoginUrl = LOGIN_URL
 				for (i in 1..5) {
 					cookieJar.clear()
 					Log.i("Login", "Starting login process with url $curLoginUrl")
@@ -95,7 +109,8 @@ class ShsmuService(
 
 					// 解析 HTML
 					val doc = Jsoup.parse(loginPageHtml, curLoginUrl)
-					val (submitUrl, form) = buildLoginForm(doc, username, encryptedPwd) ?: error("验证码AI处理失败，请再试一次")
+					val (submitUrl, form) = buildLoginForm(doc, username, encryptedPwd)
+						?: error("验证码AI处理失败，请再试一次")
 
 					// 提交登录
 					val postReq = Request.Builder()
@@ -147,7 +162,7 @@ class ShsmuService(
 	suspend fun checkSessionValid(): Boolean {
 		return withContext(Dispatchers.IO) {
 			try {
-				val req = Request.Builder().url(loginUrl).get().build()
+				val req = Request.Builder().url(LOGIN_URL).get().build()
 				client.newCall(req).execute().use { resp ->
 					checkLoginSuccess(resp.body.string())
 				}
@@ -195,7 +210,7 @@ class ShsmuService(
 	suspend fun getCurriculum(start: String, end: String): JSONObject {
 		return withContext(Dispatchers.IO) {
 			val url =
-				"${homeUrl}/Home/GetCurriculumTable?vpn-12-o2-jwstu.shsmu.edu.cn&Start=$start&End=$end"
+				"${HOME_URL}/Home/GetCurriculumTable?vpn-12-o2-jwstu.shsmu.edu.cn&Start=$start&End=$end"
 
 			Log.i("Curriculum", "Requesting: $url")
 
@@ -231,7 +246,7 @@ class ShsmuService(
 	suspend fun getCourseDetail(course: CourseItem): JSONArray {
 		return withContext(Dispatchers.IO) {
 			val urlBuilder =
-				"${homeUrl}/Home/GetCalendarTable?vpn-12-o2-jwstu.shsmu.edu.cn".toHttpUrlOrNull()
+				"${HOME_URL}/Home/GetCalendarTable?vpn-12-o2-jwstu.shsmu.edu.cn".toHttpUrlOrNull()
 					?.newBuilder()
 			urlBuilder?.apply {
 				addQueryParameter("MCSID", course.ids.mcsId)
@@ -274,7 +289,7 @@ class ShsmuService(
 	suspend fun getScore(grade: String, semester: Number): JSONObject {
 		return withContext(Dispatchers.IO) {
 			val url =
-				"${homeUrl}/Score/GetStuYearScore?vpn-12-o2-jwstu.shsmu.edu.cn&Grade=$grade&Semester=$semester"
+				"${HOME_URL}/Score/GetStuYearScore?vpn-12-o2-jwstu.shsmu.edu.cn&Grade=$grade&Semester=$semester"
 
 			Log.i("Score", "Requesting: $url")
 
@@ -302,6 +317,102 @@ class ShsmuService(
 				}
 			} catch (e: Exception) {
 				Log.e("Score", "Network request failed", e)
+				throw e
+			}
+		}
+	}
+
+	suspend fun getClassroomInfoMap(
+		type: String,
+		area: String?,
+		buildCode: String?,
+		floorNo: String?
+	): JSONObject {
+		return withContext(Dispatchers.IO) {
+			val urlBuilder =
+				"${JFZX_URL}/api/edu/jfSelectData/getDict".toHttpUrlOrNull()?.newBuilder()
+			urlBuilder?.apply {
+				addQueryParameter("type", type)
+				area?.let { addQueryParameter("Area", area) }
+				buildCode?.let { addQueryParameter("BuildCode", buildCode) }
+				floorNo?.let { addQueryParameter("FloorNo", floorNo) }
+			}
+			val url = urlBuilder?.build().toString()
+
+			Log.i("ClassroomInfoMap", "Requesting: $url")
+			val req = Request.Builder()
+				.url(url)
+				.get()
+				.header("Accept", "application/json, text/javascript, */*; q=0.01")
+				.build()
+			try {
+				client.newCall(req).execute().use { resp ->
+					if (resp.isSuccessful) {
+						val body = resp.body.string()
+						Log.d("ClassroomInfoMap", "Response Body: $body")
+						throwIfSessionExpired(body)
+						if (body.isBlank()) {
+							throw Exception("Response body is empty")
+						}
+						JSONObject(body)
+					} else {
+						val errorBody = resp.body.string()
+						Log.e("ClassroomInfoMap", "HTTP ${resp.code}: $errorBody")
+						throw Exception("HTTP ${resp.code}: $errorBody")
+					}
+				}
+			} catch (e: Exception) {
+				Log.e("ClassroomInfoMap", "Network request failed", e)
+				throw e
+			}
+		}
+	}
+
+
+	suspend fun getClassroomInfoDetail(
+		date: String,
+		area: String,
+		buildCode: String,
+		floorNo: String,
+		classroomId: String
+	): JSONObject {
+		return withContext(Dispatchers.IO) {
+			val urlBuilder =
+				"${JFZX_URL}/api/edu/jfTeachingcalendar/page3".toHttpUrlOrNull()?.newBuilder()
+			urlBuilder?.apply {
+				addQueryParameter("state", "通过")
+				addQueryParameter("searchDate", date)
+				addQueryParameter("area", area)
+				addQueryParameter("buliding", buildCode) // 就是后端拼错了！
+				addQueryParameter("floor", floorNo)
+				addQueryParameter("classroomId", classroomId)
+			}
+			val url = urlBuilder?.build().toString()
+
+			Log.i("ClassroomInfoDetail", "Requesting: $url")
+			val req = Request.Builder()
+				.url(url)
+				.get()
+				.header("Accept", "application/json, text/javascript, */*; q=0.01")
+				.build()
+			try {
+				client.newCall(req).execute().use { resp ->
+					if (resp.isSuccessful) {
+						val body = resp.body.string()
+						Log.d("ClassroomInfoDetail", "Response Body: $body")
+						throwIfSessionExpired(body)
+						if (body.isBlank()) {
+							throw Exception("Response body is empty")
+						}
+						JSONObject(body)
+					} else {
+						val errorBody = resp.body.string()
+						Log.e("ClassroomInfoDetail", "HTTP ${resp.code}: $errorBody")
+						throw Exception("HTTP ${resp.code}: $errorBody")
+					}
+				}
+			} catch (e: Exception) {
+				Log.e("ClassroomInfoDetail", "Network request failed", e)
 				throw e
 			}
 		}
